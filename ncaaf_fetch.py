@@ -35,20 +35,23 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
     Calendario de la temporada (o de una semana puntual) para la división FBS
     (la que cubren la mayoría de casas de apuestas).
     """
-    # Se remueve 'classification' para evitar incompatibilidades de versión
     games = _games_api().get_games(
         year=season, week=week, season_type="regular"
     )
     
     rows = []
     for g in games:
-        # Filtrar por división FBS si viene especificada en el objeto del juego
+        # Validar de forma segura la división y la semana para evitar NoneTypes
         div_home = getattr(g, "home_division", "fbs")
         if division and div_home and div_home.lower() != division.lower():
             continue
             
+        g_week = getattr(g, "week", None)
+        if g_week is None:
+            continue
+            
         rows.append({
-            "week": g.week,
+            "week": int(g_week),
             "home_team": g.home_team,
             "away_team": g.away_team,
             "home_score": g.home_points,
@@ -58,7 +61,10 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
             "conference_game": getattr(g, "conference_game", False),
         })
         
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if not df.empty and "week" in df.columns:
+        df["week"] = pd.to_numeric(df["week"], errors="coerce")
+    return df
 
 
 _SCHEDULE_CACHE = {}
@@ -75,9 +81,13 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
 def get_completed_games(season: int, before_week: int = None) -> pd.DataFrame:
     """Partidos ya jugados. Con before_week, solo los de semanas anteriores a esa."""
     sched = get_schedule(season)
+    if sched.empty:
+        return pd.DataFrame()
+        
     games = sched.dropna(subset=["home_score", "away_score"])
-    if before_week is not None:
-        games = games[games["week"] < before_week]
+    if before_week is not None and not games.empty:
+        games["week"] = pd.to_numeric(games["week"], errors="coerce")
+        games = games[games["week"] < int(before_week)]
     return games
 
 
