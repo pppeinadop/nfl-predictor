@@ -15,7 +15,17 @@ import team_stats
 
 
 def _games_api():
-    configuration = cfbd.Configuration(access_token=config.CFBD_API_KEY)
+    configuration = cfbd.Configuration()
+    # Compatibilidad segura para asignar la API key según la versión de cfbd
+    try:
+        configuration.access_token = config.CFBD_API_KEY
+    except AttributeError:
+        try:
+            configuration.api_key['Authorization'] = f"Bearer {config.CFBD_API_KEY}"
+        except Exception:
+            configuration.api_key['api_key'] = config.CFBD_API_KEY
+            configuration.api_key_prefix['api_key'] = 'Bearer'
+            
     api_client = cfbd.ApiClient(configuration)
     return cfbd.GamesApi(api_client)
 
@@ -78,8 +88,8 @@ def _previous_season_games(season: int):
 
 
 def get_team_scoring_averages(season: int, window: int = config.ROLLING_WINDOW_TEAM,
-                               before_week: int = None) -> pd.DataFrame:
+                             before_week: int = None) -> pd.DataFrame:
     """Igual que en data_fetch.py (ver team_stats.py)."""
     games = get_completed_games(season, before_week=before_week)
     return team_stats.build_team_averages(games, _previous_season_games(season),
-                                          default_league_avg=24.0, window=window)
+                                        default_league_avg=24.0, window=window)
