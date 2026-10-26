@@ -41,7 +41,6 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
     
     rows = []
     for g in games:
-        # Validar de forma segura la división y la semana para evitar NoneTypes
         div_home = getattr(g, "home_division", "fbs")
         if division and div_home and div_home.lower() != division.lower():
             continue
@@ -63,7 +62,7 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
         
     df = pd.DataFrame(rows)
     if not df.empty and "week" in df.columns:
-        df["week"] = pd.to_numeric(df["week"], errors="coerce")
+        df["week"] = pd.to_numeric(df["week"], errors="coerce").fillna(0).astype(int)
     return df
 
 
@@ -84,10 +83,17 @@ def get_completed_games(season: int, before_week: int = None) -> pd.DataFrame:
     if sched.empty:
         return pd.DataFrame()
         
-    games = sched.dropna(subset=["home_score", "away_score"])
+    games = sched.dropna(subset=["home_score", "away_score"]).copy()
+    if not games.empty and "week" in games.columns:
+        games["week"] = pd.to_numeric(games["week"], errors="coerce").fillna(0).astype(int)
+        
     if before_week is not None and not games.empty:
-        games["week"] = pd.to_numeric(games["week"], errors="coerce")
-        games = games[games["week"] < int(before_week)]
+        try:
+            bw = int(before_week)
+            games = games[games["week"] < bw]
+        except (ValueError, TypeError):
+            pass
+            
     return games
 
 
@@ -101,7 +107,15 @@ def _previous_season_games(season: int):
     if not config.CARRY_OVER_PREVIOUS_SEASON:
         return None
     try:
-        return get_completed_games(season - 1)
+        # Forzar un valor seguro para evitar que 'before_week' pase como None o cause conflicto de tipos
+        prev_season = int(season) - 1
+        sched = get_schedule(prev_season)
+        if sched.empty:
+            return None
+        games = sched.dropna(subset=["home_score", "away_score"]).copy()
+        if not games.empty and "week" in games.columns:
+            games["week"] = pd.to_numeric(games["week"], errors="coerce").fillna(0).astype(int)
+        return games
     except Exception as e:
         print(f"[Aviso] No se pudo cargar la temporada anterior: {e}")
         return None
