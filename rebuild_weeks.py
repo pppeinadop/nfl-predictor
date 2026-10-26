@@ -135,7 +135,14 @@ def sync_final_results(season: int, week: int, league: str = "nfl") -> dict:
     schedule = stats.get_schedule(season)
     if schedule is None or schedule.empty:
         return {"updated": 0, "not_found": 0}
-    games = schedule[schedule["week"] == week]
+    
+    # Blindaje seguro para convertir la columna 'week' a numérica y evitar errores de comparación
+    if "week" in schedule.columns:
+        schedule["week"] = pd.to_numeric(schedule["week"], errors="coerce").fillna(0).astype(int)
+        games = schedule[schedule["week"] == int(week)]
+    else:
+        return {"updated": 0, "not_found": 0}
+
     updated = 0
     for _, game in games.iterrows():
         home_score = game.get("home_score")
@@ -149,7 +156,7 @@ def sync_final_results(season: int, week: int, league: str = "nfl") -> dict:
         if any(term in status for term in ("progress", "live", "scheduled", "pre-game", "pregame")):
             continue
         # En NFLverse, 'result' se completa cuando el partido ya tiene resultado final.
-        if league == "nfl" and "result" in games.columns and pd.isna(game.get("result")):
+        if league == "nfl" and "result" in schedule.columns and pd.isna(game.get("result")):
             continue
         try:
             ok = db.sync_final_score(
