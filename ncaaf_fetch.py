@@ -35,9 +35,12 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
     Calendario de la temporada (o de una semana puntual) para la división FBS
     (la que cubren la mayoría de casas de apuestas).
     """
-    games = _games_api().get_games(
-        year=season, week=week, season_type="regular"
-    )
+    # Evitamos pasar 'week=None' para prevenir el bug interno de cfbd (None > 16)
+    kwargs = {"year": season, "season_type": "regular"}
+    if week is not None:
+        kwargs["week"] = int(week)
+        
+    games = _games_api().get_games(**kwargs)
     
     rows = []
     for g in games:
@@ -107,7 +110,6 @@ def _previous_season_games(season: int):
     if not config.CARRY_OVER_PREVIOUS_SEASON:
         return None
     try:
-        # Forzar un valor seguro para evitar que 'before_week' pase como None o cause conflicto de tipos
         prev_season = int(season) - 1
         sched = get_schedule(prev_season)
         if sched.empty:
