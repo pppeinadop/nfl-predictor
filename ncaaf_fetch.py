@@ -16,14 +16,21 @@ import team_stats
 
 def _games_api():
     configuration = cfbd.Configuration()
-    # Compatibilidad segura para asignar la API key según la versión de cfbd
+    
+    # Asegurar el formato correcto con el prefijo "Bearer " requerido por CFBD
+    api_key = str(config.CFBD_API_KEY).strip()
+    if not api_key.startswith("Bearer "):
+        full_token = f"Bearer {api_key}"
+    else:
+        full_token = api_key
+
     try:
-        configuration.access_token = config.CFBD_API_KEY
-    except AttributeError:
+        configuration.api_key['Authorization'] = full_token
+    except Exception:
         try:
-            configuration.api_key['Authorization'] = f"Bearer {config.CFBD_API_KEY}"
+            configuration.access_token = full_token
         except Exception:
-            configuration.api_key['api_key'] = config.CFBD_API_KEY
+            configuration.api_key['api_key'] = api_key
             configuration.api_key_prefix['api_key'] = 'Bearer'
             
     api_client = cfbd.ApiClient(configuration)
@@ -35,7 +42,6 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
     Calendario de la temporada (o de una semana puntual) para la división FBS
     (la que cubren la mayoría de casas de apuestas).
     """
-    # Evitamos pasar 'week=None' para prevenir el bug interno de cfbd (None > 16)
     kwargs = {"year": season, "season_type": "regular"}
     if week is not None:
         kwargs["week"] = int(week)
