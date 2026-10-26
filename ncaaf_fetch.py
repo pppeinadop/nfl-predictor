@@ -35,19 +35,29 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
     Calendario de la temporada (o de una semana puntual) para la división FBS
     (la que cubren la mayoría de casas de apuestas).
     """
+    # Se remueve 'classification' para evitar incompatibilidades de versión
     games = _games_api().get_games(
-        year=season, week=week, season_type="regular", classification=division
+        year=season, week=week, season_type="regular"
     )
-    rows = [{
-        "week": g.week,
-        "home_team": g.home_team,
-        "away_team": g.away_team,
-        "home_score": g.home_points,
-        "away_score": g.away_points,
-        "start_date": getattr(g, "start_date", None),
-        "completed": getattr(g, "completed", None),
-        "conference_game": getattr(g, "conference_game", False),
-    } for g in games]
+    
+    rows = []
+    for g in games:
+        # Filtrar por división FBS si viene especificada en el objeto del juego
+        div_home = getattr(g, "home_division", "fbs")
+        if division and div_home and div_home.lower() != division.lower():
+            continue
+            
+        rows.append({
+            "week": g.week,
+            "home_team": g.home_team,
+            "away_team": g.away_team,
+            "home_score": g.home_points,
+            "away_score": g.away_points,
+            "start_date": getattr(g, "start_date", None),
+            "completed": getattr(g, "completed", None),
+            "conference_game": getattr(g, "conference_game", False),
+        })
+        
     return pd.DataFrame(rows)
 
 
