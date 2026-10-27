@@ -287,8 +287,10 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
 
 def sync_final_score(league: str, season: int, week: int, home_team: str,
                      away_team: str, home_score: int, away_score: int) -> bool:
-    """Actualiza únicamente el marcador y la evaluación de una predicción oficial."""
+    """Actualiza únicamente el marcador y la evaluación de una predicción oficial (con búsqueda flexible)."""
     db = get_db()
+    
+    # Intento 1: Búsqueda exacta estándar
     query = {
         "league": league,
         "season": int(season),
@@ -297,14 +299,33 @@ def sync_final_score(league: str, season: int, week: int, home_team: str,
         "away_team": away_team,
     }
     official = db.weekly_picks.find_one(query)
+    
+    # Intento 2: Si falla, buscar de forma flexible por subcadena (por si la API trae apodos)
+    if not official:
+        candidates = list(db.weekly_picks.find({
+            "league": league,
+            "season": int(season),
+            "week": int(week)
+        }))
+        for doc in candidates:
+            db_home = str(doc.get("home_team", "")).lower()
+            db_away = str(doc.get("away_team", "")).lower()
+            if (home_team.lower() in db_home or db_home in home_team.lower()) and \
+               (away_team.lower() in db_away or db_away in away_team.lower()):
+                official = doc
+                query = {"_id": doc["_id"]}
+                break
+
     if not official:
         return False
+
     result = _result_fields(official, {
         "home_score_real": home_score,
         "away_score_real": away_score,
     })
     if not result:
         return False
+        
     db.weekly_picks.update_one(query, {"$set": result})
     return True
 
@@ -373,7 +394,6 @@ def save_market_cache(df: pd.DataFrame, season: int, week: int, league: str = "n
     db = get_db()
     now = datetime.now(timezone.utc)
     records = df.to_dict("records")
-    # Limpieza defensiva: algunos valores de numpy no son JSON-serializables tal cual.
     for rec in records:
         for k, v in list(rec.items()):
             if hasattr(v, "item"):
