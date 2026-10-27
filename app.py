@@ -33,123 +33,190 @@ st.set_page_config(
 # ---------- Estilos ----------
 st.markdown("""
 <style>
+  /* Base visual: claro, minimalista y deportivo */
+  .stApp {
+    background: #f7f9fc;
+    color: #172033;
+  }
+  [data-testid="stHeader"] {
+    background: rgba(247, 249, 252, 0.92);
+  }
+  [data-testid="stSidebar"] {
+    background: #ffffff;
+    border-right: 1px solid #e5eaf2;
+  }
+  [data-testid="stSidebar"] h1,
+  [data-testid="stSidebar"] h2,
+  [data-testid="stSidebar"] h3 {
+    color: #172033;
+  }
+  h1, h2, h3 {
+    color: #172033;
+    letter-spacing: -0.025em;
+  }
+  h1 {
+    font-weight: 750;
+    padding-bottom: 0.25rem;
+  }
+  [data-testid="stMetric"] {
+    background: #ffffff;
+    border: 1px solid #e5eaf2;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  }
+  [data-testid="stMetricLabel"] {
+    color: #64748b;
+    font-weight: 600;
+  }
+  [data-testid="stMetricValue"] {
+    color: #172033;
+  }
+  [data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: #e2e8f0 !important;
+    border-radius: 14px !important;
+    background: #ffffff;
+  }
+  div[data-testid="stPopover"] > button {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    color: #172033 !important;
+    padding: 10px 14px !important;
+    line-height: 1.3 !important;
+    border: 1px solid #dbe3ee !important;
+    border-radius: 10px !important;
+    background: #ffffff !important;
+  }
+  div[data-testid="stPopover"] > button p,
+  div[data-testid="stPopover"] > button strong {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    color: #172033 !important;
+    margin: 0 !important;
+  }
   .tag {
     display: inline-block;
     padding: 3px 10px;
     border-radius: 999px;
     font-size: 0.80rem;
-    font-weight: 600;
+    font-weight: 650;
     margin-right: 6px;
   }
-  .tag-value   { background: #14351f; color: #6ee7a0; border: 1px solid #2f7d4c; }
-  .tag-neutral { background: #1e222b; color: #9aa2b1; border: 1px solid #343a45; }
-  .tag-warn    { background: #3a2c12; color: #f5c76a; border: 1px solid #7a5a1c; }
-
+  .tag-value {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+  }
+  .tag-neutral {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+  }
+  .tag-warn {
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fde68a;
+  }
   .slot-header {
     margin-top: 24px;
-    margin-bottom: 4px;
-    padding-bottom: 6px;
-    border-bottom: 2px solid #2a2f38;
-    color: #1f2937;
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: 0.3px;
+    margin-bottom: 10px;
+    padding: 0 0 8px 2px;
+    border-bottom: 1px solid #dbe3ee;
+    color: #334155;
+    font-size: 1.05rem;
+    font-weight: 750;
+    letter-spacing: -0.01em;
   }
-
   .result-score {
     font-size: 1.05rem;
-    font-weight: 700;
-    letter-spacing: 0.3px;
+    font-weight: 750;
+    letter-spacing: 0.1px;
     margin-bottom: 10px;
     line-height: 1.25;
   }
-  .result-score.hit     { color: #059669; }
-  .result-score.miss    { color: #dc2626; }
-  .result-score.neutral { color: #4b5563; }
-
+  .result-score.hit { color: #047857; }
+  .result-score.miss { color: #b91c1c; }
+  .result-score.neutral { color: #475569; }
   .badge {
     display: inline-block;
-    font-size: 0.98rem;
-    font-weight: 700;
-    padding: 5px 14px;
+    font-size: 0.92rem;
+    font-weight: 750;
+    padding: 5px 12px;
     border-radius: 999px;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.1px;
     line-height: 1.2;
     margin-bottom: 6px;
     border: 1px solid;
   }
-  .badge-hit     { background: #d1fae5; color: #059669; border-color: #6ee7b7; }
-  .badge-miss    { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
-  .badge-neutral { background: #e5e7eb; color: #4b5563; border-color: #9ca3af; }
-
+  .badge-hit { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+  .badge-miss { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  .badge-neutral { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
   .record {
-    color: #6b7280;
+    color: #64748b;
     font-size: 0.72em;
     font-weight: 500;
     letter-spacing: 0;
   }
-
   .ml-line {
     font-size: 0.92em;
-    color: #374151;
+    color: #475569;
     margin-top: 6px;
   }
   .ml-line .v {
-    color: #111827;
+    color: #172033;
     font-weight: 700;
   }
   .ml-line .v.edge {
     color: #047857;
-    font-weight: 700;
+    font-weight: 750;
   }
   .ml-line .sep {
-    color: #9ca3af;
+    color: #94a3b8;
     margin: 0 4px;
   }
-
   .at-sep {
     text-align: center;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #6b7280;
+    font-size: 1.35rem;
+    font-weight: 750;
+    color: #94a3b8;
     padding-top: 4px;
   }
-
-  /* Botones de equipo (popover con historial): más grandes y más negros */
-  div[data-testid="stPopover"] > button {
-    font-size: 1.25rem !important;
-    font-weight: 900 !important;
-    color: #0b1220 !important;
-    padding: 10px 16px !important;
-    line-height: 1.3 !important;
-  }
-  div[data-testid="stPopover"] > button p {
-    font-size: 1.25rem !important;
-    font-weight: 900 !important;
-    color: #0b1220 !important;
-    margin: 0 !important;
-  }
-  div[data-testid="stPopover"] > button strong {
-    font-size: 1.25rem !important;
-    font-weight: 900 !important;
-    color: #0b1220 !important;
-  }
-
   .gen-confirm {
-    background: #f3f4f6;
-    border: 2px solid #2563eb;
-    border-radius: 10px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
     padding: 16px 20px;
     margin-bottom: 16px;
   }
-  .gen-confirm .label { color: #4b5563; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase; }
-  .gen-confirm .value { color: #111827; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.4px; }
-  .gen-confirm .sub   { color: #374151; font-size: 1rem; margin-top: 4px; }
-
+  .gen-confirm .label {
+    color: #64748b;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .gen-confirm .value {
+    color: #172033;
+    font-size: 1.35rem;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+  }
+  .gen-confirm .sub {
+    color: #475569;
+    font-size: 0.95rem;
+    margin-top: 4px;
+  }
   .calib-note {
-    color: #4b5563;
+    color: #64748b;
     font-size: 0.9em;
     margin-bottom: 12px;
+  }
+  div.stButton > button {
+    border-radius: 9px;
+    font-weight: 650;
+  }
+  div[data-baseweb="select"] > div {
+    border-radius: 9px;
+    border-color: #dbe3ee;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -937,17 +1004,11 @@ with tab_gen:
         "Cambia ahí si quieres generar para NFL o NCAAF."
     )
 
-    # Inicialización segura para prevenir StreamlitWidgetAlreadyInstantiatedError
-    if "gen_from_week" not in st.session_state:
-        st.session_state["gen_from_week"] = int(week) if week is not None else 1
-    if "gen_to_week" not in st.session_state:
-        st.session_state["gen_to_week"] = int(week) if week is not None else 1
-
     col_a, col_b, col_btn = st.columns([1, 1, 1.3])
     with col_a:
         from_week = st.number_input(
             "Desde semana", min_value=1, max_value=25,
-            value=st.session_state["gen_from_week"], step=1, key="gen_from_week",
+            value=1, step=1, key="gen_from_week",
         )
     with col_b:
         to_week = st.number_input(
@@ -978,137 +1039,413 @@ with tab_gen:
     col_c, col_d, col_e = st.columns(3)
     with col_c:
         skip_odds = st.checkbox(
-            "Omitir llamada a The Odds API (usar caché)",
+            "Usar caché de mercado (skip-odds)",
             value=True,
-            help="Si está marcado, no consume cuota de The Odds API y usa la caché guardada en MongoDB.",
+            help="Solo cache. NUNCA llama a The Odds API. Ideal para regenerar histórico.",
         )
     with col_d:
         refresh_odds = st.checkbox(
-            "Forzar actualización de cuotas",
-            value=False,
-            help="Consulta de nuevo a The Odds API para refrescar las líneas actuales.",
+            "Refrescar odds", value=False,
+            help="Fuerza llamar a The Odds API aunque ya haya cache (consume cuota).",
         )
     with col_e:
-        verbose = st.checkbox(
-            "Modo detallado (consola)",
-            value=False,
-            help="Imprime más trazas en la pestaña de consola.",
+        verbose = st.checkbox("Mostrar detalle", value=False)
+
+    if refresh_odds:
+        st.info("Se consultará The Odds API. Esta opción prevalece sobre la caché y puede consumir cuota.")
+
+    if to_week < from_week:
+        rango_txt = "(rango inválido)"
+    elif to_week == from_week:
+        rango_txt = f"Semana {int(from_week)}"
+    else:
+        rango_txt = f"Semanas {int(from_week)} a {int(to_week)}"
+
+    st.markdown(
+        f"""
+        <div class="gen-confirm">
+          <div class="label">Se va a generar</div>
+          <div class="value">{league_label} · Temporada {season}</div>
+          <div class="sub">{rango_txt}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    api_calls = 0
+    if to_week >= from_week and (not skip_odds or refresh_odds):
+        api_calls = (int(to_week) - int(from_week) + 1)
+    if api_calls > 0:
+        st.warning(f"⚠ Se harán hasta **{api_calls} llamada(s)** a The Odds API.")
+    elif to_week >= from_week:
+        st.success("✅ No se llamará a The Odds API (solo caché de Mongo).")
+
+    action_col1, action_col2 = st.columns([1, 1])
+    with action_col1:
+        generate_clicked = st.button(
+            "Generar / actualizar predicciones", type="primary",
+            disabled=(to_week < from_week), use_container_width=True,
+        )
+    with action_col2:
+        sync_results_clicked = st.button(
+            "Sincronizar resultados finales", use_container_width=True,
+            disabled=(to_week < from_week),
+            help="Actualiza solo marcadores y métricas de partidos terminados; no recalcula predicciones.",
         )
 
-    st.markdown("---")
+    if sync_results_clicked:
+        with st.spinner("Consultando resultados finales..."):
+            result_summary = {"updated": 0, "not_found": 0}
+            for result_week in range(int(from_week), int(to_week) + 1):
+                week_summary = rebuild_weeks.sync_final_results(
+                    int(season), result_week, league_choice
+                )
+                result_summary["updated"] += week_summary["updated"]
+                result_summary["not_found"] += week_summary["not_found"]
+        st.success(
+            f"Resultados sincronizados: {result_summary['updated']} partidos actualizados. "
+            "Las predicciones oficiales no se modificaron."
+        )
 
-    if skip_odds:
-        st.success("No se llamará a The Odds API (solo caché de Mongo).")
-    elif refresh_odds:
-        st.warning("Se forzará una llamada nueva a The Odds API (consumirá cuota).")
+    progress_placeholder = st.empty()
+    log_placeholder = st.empty()
 
-    if st.button("🚀 Iniciar Generación / Actualización", type="primary", use_container_width=True):
-        log_ph = st.empty()
-        prog_ph = st.progress(0.0, text="Iniciando...")
-        try:
-            db.ensure_indexes()
-            ok_w, fail_w = _run_generation(
-                season=season,
-                league=league_choice,
-                from_week=int(from_week),
-                to_week=int(to_week),
+    if generate_clicked:
+        with st.spinner("Generando..."):
+            ok, fail = _run_generation(
+                season, league_choice,
+                int(from_week), int(to_week),
                 skip_odds=skip_odds,
                 refresh_odds=refresh_odds,
                 verbose=verbose,
                 prediction_mode=prediction_mode,
-                log_placeholder=log_ph,
-                progress_placeholder=prog_ph,
+                log_placeholder=log_placeholder,
+                progress_placeholder=progress_placeholder,
             )
-            if not fail_w:
-                st.success(f"¡Generación completada con éxito para las semanas: {ok_w}!")
-            else:
-                st.warning(f"Proceso finalizado. Éxito: {ok_w}, Con errores: {fail_w}.")
-        except Exception as e:
-            st.error(f"Error crítico durante la generación: {e}")
 
-    st.markdown("---")
-    st.subheader("Sincronización de Resultados Finales")
-    st.caption(
-        "Consulta los marcadores finales de la liga seleccionada para evaluar los aciertos (ML, Spread, O/U)."
-    )
+        st.markdown("### Resultado")
+        if ok:
+            st.success(f"✅ Semanas generadas: {ok}")
+        if fail:
+            st.error(f"❌ Semanas con error: {fail}")
 
-    if st.button("🔄 Sincronizar Resultados de la Semana Actual", use_container_width=True):
-        if week is None:
-            st.warning("No hay una semana seleccionada en la barra lateral.")
-        else:
-            with st.spinner(f"Sincronizando resultados de {league_label} - Semana {week}..."):
-                try:
-                    db.ensure_indexes()
-                    summary = rebuild_weeks.sync_final_results(season, week, league_choice)
-                    st.success(f"Sincronización exitosa: {summary}")
-                except Exception as e:
-                    st.error(f"Error al sincronizar resultados: {e}")
+        if st.button("🔄 Recargar datos"):
+            st.session_state.pop("_week_context", None)
+            st.rerun()
 
 
 # --- TAB: Calibración ---
 with tab_calib:
-    st.subheader("📐 Calibración del Modelo (Moneyline)")
+    st.subheader("📐 Calibración del modelo")
     st.markdown(
         '<div class="calib-note">'
-        "Compara la probabilidad predicha por el modelo frente al porcentaje real de acierto en los partidos ya jugados."
-        "</div>",
+        'Esta tabla te dice si las probabilidades del modelo son <b>honestas</b>. '
+        'Cuando el modelo dice "70%", ¿realmente acierta el 70% de las veces? '
+        'Si los números de "Predicho" y "Real" son parecidos, las probabilidades '
+        'del modelo son confiables.'
+        '</div>',
         unsafe_allow_html=True,
     )
 
-    col_cs1, col_cs2 = st.columns([1, 2])
-    with col_cs1:
-        calib_from = st.number_input("Desde temporada", min_value=2015, max_value=season, value=season, step=1)
-        calib_to = st.number_input("Hasta temporada", min_value=2015, max_value=season, value=season, step=1)
-        run_calib = st.button("Calcular tabla de calibración", use_container_width=True)
+    seasons_available_calib = []
+    try:
+        for s in range(2015, 2031):
+            if db.list_available_weeks(s, league_choice):
+                seasons_available_calib.append(s)
+    except Exception:
+        pass
 
-    if run_calib:
-        with st.spinner("Recopilando partidos y calculando calibración..."):
-            all_played = _collect_all_played(league_choice, int(calib_from), int(calib_to))
-        if all_played.empty:
-            st.warning("No hay partidos con resultados reales registrados en el rango de temporadas seleccionado.")
+    if not seasons_available_calib:
+        st.warning("No hay datos guardados para calibrar.")
+        st.stop()
+
+    min_s = min(seasons_available_calib)
+    max_s = max(seasons_available_calib)
+
+    col_ca, col_cb = st.columns([1, 1])
+    with col_ca:
+        calib_from = st.number_input(
+            "Desde temporada", min_value=min_s, max_value=max_s,
+            value=min_s, step=1, key="calib_from",
+        )
+    with col_cb:
+        calib_to = st.number_input(
+            "Hasta temporada", min_value=min_s, max_value=max_s,
+            value=max_s, step=1, key="calib_to",
+        )
+
+    st.caption(
+        f"Analizando temporadas **{int(calib_from)}–{int(calib_to)}** "
+        f"para {league_label}."
+    )
+
+    with st.spinner("Recopilando datos históricos..."):
+        calib_df = _collect_all_played(league_choice, int(calib_from), int(calib_to))
+
+    if calib_df.empty:
+        st.warning("No hay partidos jugados en ese rango.")
+    else:
+        st.caption(f"Partidos analizados: **{len(calib_df)}**")
+        st.markdown("---")
+
+        st.markdown("### 🎯 Calibración de probabilidad (ML)")
+        st.caption(
+            "Cuando el modelo asigna X% al favorito, ¿qué % de esos partidos ganó el favorito? "
+            "Si 'Predicho' y 'Real' son parecidos, la probabilidad está bien calibrada."
+        )
+        tbl_ml = _calibration_table_ml(calib_df)
+        if tbl_ml.empty:
+            st.info("Sin datos suficientes.")
         else:
-            tab_df = _calibration_table_ml(all_played)
-            if tab_df.empty:
-                st.warning("No hay suficientes datos de probabilidad para construir la tabla.")
-            else:
-                st.success(f"Analizados {len(all_played)} partidos finalizados.")
-                st.dataframe(tab_df, use_container_width=True, hide_index=True)
+            st.dataframe(tbl_ml, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("**Cómo leer esta tabla:**")
+        st.markdown(
+            "- **Diferencia** cercana a 0 = bien calibrado.\n"
+            "- Si 'Diferencia' es consistentemente positiva, el modelo es "
+            "**conservador** (subestima su propia confianza).\n"
+            "- Si es consistentemente negativa, es **optimista** (sobreestima).\n"
+            "- Buckets con pocos partidos (< 30) pueden tener ruido.\n\n"
+            "**Nota:** las probabilidades de spread y over/under no se muestran aquí "
+            "porque no están calibradas (dan ~50% real en todos los buckets). "
+            "El modelo tiene señal en el ganador (ML), no en quién cubre la línea."
+        )
 
 
 # --- TAB: Reporte ---
 with tab_report:
-    st.subheader("📊 Reporte de Rendimiento General")
-    st.markdown("Genera un reporte consolidado con el balance de apuestas y rentabilidad.")
+    st.subheader("📊 Reporte de desempeño")
+    st.caption(
+        "Resumen del desempeño del modelo. Descarga el reporte y súbelo a una IA "
+        "(ChatGPT, Claude, Gemini) para que lo analice a fondo."
+    )
 
-    if st.button("📄 Generar / Descargar Reporte Consolidado", use_container_width=True):
-        with st.spinner("Generando reporte..."):
-            try:
-                rep_text = report.build_summary_report(season, league_choice)
-                st.text_area("Resultado del Reporte", rep_text, height=300)
-                st.download_button(
-                    label="📥 Descargar Reporte en TXT",
-                    data=rep_text,
-                    file_name=f"reporte_{league_choice}_{season}.txt",
-                    mime="text/plain",
-                )
-            except Exception as e:
-                st.error(f"No se pudo generar el reporte: {e}")
-
-
-# --- TAB: Salida de consola ---
-with tab_console:
-    st.subheader("🖥️ Salida de Consola y Logs")
-    st.caption("Aquí se muestran los registros de depuración recientes de la aplicación.")
+    seasons_available = []
     try:
-        log_path = "app.log"
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8") as f:
-                log_content = f.read()
-            st.text_area("Contenido de app.log", log_content, height=450)
-            if st.button("🗑️ Limpiar log"):
-                open(log_path, "w", encoding="utf-8").close()
-                st.rerun()
+        for s in range(2015, 2031):
+            if db.list_available_weeks(s, league_choice):
+                seasons_available.append(s)
+    except Exception:
+        pass
+
+    if not seasons_available:
+        st.warning("No hay datos guardados para esta liga. Genera primero desde la pestaña **🔧 Generar**.")
+        st.stop()
+
+    min_season = min(seasons_available)
+    max_season = max(seasons_available)
+
+    col_r1, col_r2, col_r3 = st.columns([1, 1, 1.3])
+    with col_r1:
+        from_season = st.number_input(
+            "Desde temporada",
+            min_value=min_season, max_value=max_season,
+            value=min_season, step=1, key="rep_from_season",
+        )
+    with col_r2:
+        to_season = st.number_input(
+            "Hasta temporada",
+            min_value=min_season, max_value=max_season,
+            value=max_season, step=1, key="rep_to_season",
+        )
+    with col_r3:
+        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
+        if st.button("📚 Usar todo el histórico disponible", use_container_width=True):
+            st.session_state["rep_from_season"] = min_season
+            st.session_state["rep_to_season"] = max_season
+            st.rerun()
+
+    st.caption(
+        f"Temporadas con datos: {seasons_available}. "
+        f"Rango actual: **{int(from_season)}–{int(to_season)}**."
+    )
+
+    col_x, col_y = st.columns([1, 1])
+    with col_x:
+        only_played_report = st.checkbox(
+            "Solo partidos ya jugados", value=True,
+            help="Desactívalo para incluir partidos futuros en el CSV crudo.",
+        )
+    with col_y:
+        report_format = st.selectbox(
+            "Formato de descarga",
+            options=["markdown", "json", "csv"],
+            format_func=lambda x: {
+                "markdown": "Markdown (.md) — ideal para pegar en una IA",
+                "json": "JSON (.json) — estructurado",
+                "csv": "CSV (.csv) — crudo para Excel/pandas",
+            }[x],
+        )
+
+    if st.button("📥 Generar reporte", type="primary"):
+        with st.spinner("Recopilando datos de todas las temporadas..."):
+            full_df = report.collect_range(
+                int(from_season), int(to_season), league_choice,
+                only_played=only_played_report,
+            )
+
+        if full_df.empty:
+            st.warning("No hay partidos para reportar en ese rango.")
         else:
-            st.info("No se encontró el archivo `app.log` en el directorio de trabajo.")
-    except Exception as e:
-        st.info(f"No se pudieron leer los registros: {e}")
+            stats = report.compute_stats(full_df)
+            g = stats.get("global") or {}
+
+            st.markdown("### Resumen general")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                acc = g.get("ml")
+                if acc and acc.get("total"):
+                    st.metric("ML", f"{acc['aciertos']}/{acc['total']}", delta=f"{acc['pct']}%")
+                else:
+                    st.metric("ML", "—")
+            with c2:
+                acc = g.get("spread")
+                if acc and acc.get("total"):
+                    st.metric("Spread", f"{acc['aciertos']}/{acc['total']}", delta=f"{acc['pct']}%")
+                else:
+                    st.metric("Spread", "—")
+            with c3:
+                acc = g.get("total")
+                if acc and acc.get("total"):
+                    st.metric("O/U", f"{acc['aciertos']}/{acc['total']}", delta=f"{acc['pct']}%")
+                else:
+                    st.metric("O/U", "—")
+            with c4:
+                st.metric("Partidos", stats["total_partidos"])
+
+            if stats.get("por_temporada"):
+                st.markdown("### Por temporada")
+                rows = []
+                for s in stats["por_temporada"]:
+                    def _fmt(a):
+                        if not a or not a.get("total"):
+                            return "—"
+                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
+                    rows.append({
+                        "Temporada": s["temporada"],
+                        "Partidos": s["partidos"],
+                        "ML": _fmt(s.get("ml")),
+                        "Spread": _fmt(s.get("spread")),
+                        "O/U": _fmt(s.get("total")),
+                        "Err. margen": s.get("error_margen_medio_pts"),
+                        "Err. total": s.get("error_total_medio_pts"),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            if stats.get("por_semana"):
+                st.markdown("### Por semana")
+                rows = []
+                for s in stats["por_semana"]:
+                    def _fmt(a):
+                        if not a or not a.get("total"):
+                            return "—"
+                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
+                    rows.append({
+                        "Semana": s["semana"],
+                        "Partidos": s["partidos"],
+                        "ML": _fmt(s.get("ml")),
+                        "Spread": _fmt(s.get("spread")),
+                        "O/U": _fmt(s.get("total")),
+                        "Err. margen": s.get("error_margen_medio_pts"),
+                        "Err. total": s.get("error_total_medio_pts"),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            st.markdown("### Por rango de favoritismo")
+            if stats.get("por_rango_spread"):
+                rows = []
+                for s in stats["por_rango_spread"]:
+                    def _fmt(a):
+                        if not a or not a.get("total"):
+                            return "—"
+                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
+                    rows.append({
+                        "Rango": s["rango"],
+                        "Partidos": s["partidos"],
+                        "ML": _fmt(s.get("ml")),
+                        "Spread": _fmt(s.get("spread")),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            st.markdown("### Por nivel de confianza del modelo")
+            if stats.get("por_confianza_ml"):
+                rows = []
+                for s in stats["por_confianza_ml"]:
+                    def _fmt(a):
+                        if not a or not a.get("total"):
+                            return "—"
+                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
+                    rows.append({
+                        "Confianza": s["confianza"],
+                        "Partidos": s["partidos"],
+                        "ML": _fmt(s.get("ml")),
+                        "Spread": _fmt(s.get("spread")),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            st.markdown("### Descargar reporte")
+
+            label = f"{int(from_season)}" if from_season == to_season else f"{int(from_season)}-{int(to_season)}"
+            base_name = f"reporte_{league_choice}_{label}"
+
+            if report_format == "markdown":
+                md = report.to_markdown(full_df, stats)
+                st.download_button(
+                    "⬇️ Descargar Markdown (.md)",
+                    data=md.encode("utf-8"),
+                    file_name=f"{base_name}.md",
+                    mime="text/markdown",
+                )
+                with st.expander("Vista previa (Markdown)"):
+                    st.markdown(md)
+
+            elif report_format == "json":
+                data = report.to_json_dict(full_df, stats)
+                js = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+                st.download_button(
+                    "⬇️ Descargar JSON (.json)",
+                    data=js.encode("utf-8"),
+                    file_name=f"{base_name}.json",
+                    mime="application/json",
+                )
+                with st.expander("Vista previa (JSON, primeros 3000 caracteres)"):
+                    st.code(js[:3000] + ("\n..." if len(js) > 3000 else ""), language="json")
+
+            else:
+                csv_bytes = full_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "⬇️ Descargar CSV (.csv)",
+                    data=csv_bytes,
+                    file_name=f"{base_name}.csv",
+                    mime="text/csv",
+                )
+                with st.expander("Vista previa (primeras filas)"):
+                    st.dataframe(full_df.head(20), use_container_width=True, hide_index=True)
+
+
+# --- TAB: Consola ---
+with tab_console:
+    if week is None:
+        st.info("No hay datos para mostrar. Genera alguna semana primero.")
+    else:
+        st.caption("Salida literal de `predict_games.print_picks()`.")
+        if picks_df.empty:
+            st.info("Sin datos.")
+        else:
+            try:
+                f = io.StringIO()
+                with contextlib.redirect_stdout(f):
+                    predict_games.print_picks(picks_df)
+                st.code(f.getvalue(), language="text")
+            except Exception as e:
+                st.error(f"No se pudo generar la salida de consola: {e}")
+
+
+# ---------- Footer ----------
+st.markdown("---")
+st.caption(
+    "Los datos se leen de MongoDB. También puedes generar semanas desde la terminal con "
+    "`python rebuild_weeks.py --season <AÑO> --league <nfl|ncaaf> --from-week <X> --to-week <Y> --skip-odds`."
+)
