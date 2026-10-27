@@ -1,1 +1,1 @@
-hOLI
+print("HOLI")
