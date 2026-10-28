@@ -389,6 +389,42 @@ st.markdown("""
     div[data-testid="stPopover"] > button p,
     div[data-testid="stPopover"] > button strong { font-size: 0.92rem !important; }
   }
+  [data-testid="stRadioGroup"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+  [data-testid="stRadioOption"] {
+    padding: 0.42rem 0.8rem;
+    border: 1px solid var(--ui-line);
+    border-radius: 999px;
+    background: var(--ui-surface);
+    transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+  }
+  [data-testid="stRadioOption"]:hover {
+    border-color: #9acbb9;
+    background: var(--ui-green-soft);
+  }
+  [data-testid="stRadioOption"][data-selected="true"] {
+    border-color: var(--ui-green);
+    background: var(--ui-green);
+    color: #ffffff;
+  }
+  [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] {
+    color: #ffffff;
+  }
+  [data-testid="stRadioOption"]:focus-within {
+    outline: 3px solid rgba(8, 127, 91, 0.3);
+    outline-offset: 2px;
+  }
+  [data-testid="stExpander"] summary {
+    border-radius: 10px;
+    color: var(--ui-green-dark);
+    font-weight: 650;
+  }
+  [data-testid="stExpander"] summary:hover {
+    background: var(--ui-green-soft);
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -505,6 +541,25 @@ def _accuracy_metric(df: pd.DataFrame, col: str):
     if total == 0:
         return None
     return aciertos, total, round(100 * aciertos / total)
+
+
+def _probability_fraction(value):
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    raw = str(value).strip()
+    has_percent = raw.endswith("%")
+    try:
+        probability = float(raw.rstrip("%").strip())
+    except (TypeError, ValueError):
+        return None
+    if not has_percent and abs(probability) <= 1:
+        return min(max(probability, 0.0), 1.0)
+    return min(max(probability / 100.0, 0.0), 1.0)
 
 
 def _render_result_body(rr: str, ac, acs, act) -> str:
@@ -827,6 +882,142 @@ def _run_generation(season, league, from_week, to_week,
     return ok, fail
 
 
+def _render_match_card(r, season, week, league, records_fallback):
+    away_team, home_team = r["partido"].split(" @ ")
+    home_rec = _resolve_record(r, "home", season, week, league, records_fallback)
+    away_rec = _resolve_record(r, "away", season, week, league, records_fallback)
+    away_title = _team_with_record(away_team, away_rec)
+    home_title = _team_with_record(home_team, home_rec)
+
+    dt_label = fmt_datetime(r.get("fecha"), r.get("hora"))
+    cap = f"{fmt(r.get('liga'))} · Semana {fmt(r.get('semana'))}"
+    if dt_label:
+        cap = f"{cap} · {dt_label}"
+
+    with st.container(border=True):
+        st.caption(cap)
+        c_away, c_projection, c_home = st.columns([1, 1.15, 1])
+        with c_away:
+            st.caption("VISITANTE")
+            with st.popover(f"**{away_title}**", use_container_width=True):
+                _render_team_history(season, away_team, league)
+        with c_projection:
+            st.metric("PROYECCIÓN DEL MODELO", fmt(r.get("marcador_proyectado")))
+        with c_home:
+            st.caption("LOCAL")
+            with st.popover(f"**{home_title}**", use_container_width=True):
+                _render_team_history(season, home_team, league)
+
+        prob_a = _get(r, "prob_away", "prob_gana_visita")
+        prob_h = _get(r, "prob_home", "prob_gana_local")
+        prob_cols = st.columns(2)
+        for col, team, value in [
+            (prob_cols[0], away_team, prob_a),
+            (prob_cols[1], home_team, prob_h),
+        ]:
+            with col:
+                fraction = _probability_fraction(value)
+                if fraction is None:
+                    st.caption(f"Probabilidad de victoria · {team}: {fmt(value)}")
+                else:
+                    st.progress(fraction, text=f"{team} · {fraction:.0%} de victoria")
+
+        rr = r.get("resultado_real")
+        if rr and pd.notna(rr):
+            st.success(f"Resultado final: {rr}")
+        else:
+            st.caption("⏳ Partido pendiente")
+
+        tags = []
+        for label, col in [("Spread", "valor_spread"), ("Over/Under", "valor_total")]:
+            val = r.get(col)
+            if val and pd.notna(val):
+                cls = classify_value(val)
+                tags.append(f'<span class="tag {cls}">{label}: {val}</span>')
+        if tags:
+            st.markdown(" ".join(tags), unsafe_allow_html=True)
+
+        with st.expander("Explorar modelo, mercado y resultado"):
+            st.markdown("**📊 Pronóstico**")
+            st.markdown(
+                f"- Prob. victoria: {_team_md(home_team, home_rec)} `{fmt(prob_h)}` · "
+                f"{_team_md(away_team, away_rec)} `{fmt(prob_a)}`",
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"- Spread: `{fmt(r.get('spread_modelo'))}`")
+            st.markdown(f"- Over/Under: `{fmt(r.get('total_modelo'))}`")
+            st.markdown("**💹 Mercado**")
+
+            odds_updated = r.get("odds_cache_updated_at")
+            if odds_updated is not None and pd.notna(odds_updated):
+                st.caption(f"Cuotas guardadas: {fmt(odds_updated)}")
+            elif all(
+                fmt(_get(r, col)) == "—"
+                for col in ("spread_consenso", "total_consenso", "ml_home", "ml_away")
+            ):
+                st.caption("Sin cuotas disponibles; predicción generada solo con el modelo.")
+
+            cons_spread = fmt(r.get("spread_consenso"))
+            if cons_spread == "—":
+                msl = _get(r, "market_spread_line")
+                if msl is not None:
+                    try:
+                        msl_f = float(msl)
+                        if msl_f > 0:
+                            cons_spread = f"{home_team} -{abs(msl_f):g}"
+                        elif msl_f < 0:
+                            cons_spread = f"{away_team} -{abs(msl_f):g}"
+                        else:
+                            cons_spread = "Pick'em (0)"
+                    except (TypeError, ValueError):
+                        pass
+            st.markdown(f"- Spread: `{cons_spread}`")
+
+            cons_total = fmt(r.get("total_consenso"))
+            if cons_total == "—":
+                mtl = _get(r, "market_total_line")
+                if mtl is not None:
+                    try:
+                        cons_total = f"{float(mtl):g}"
+                    except (TypeError, ValueError):
+                        pass
+            st.markdown(f"- Over/Under: `{cons_total}`")
+
+            ml_h = _get(r, "ml_home", "ml_local")
+            ml_a = _get(r, "ml_away", "ml_visita")
+            if ml_h is not None or ml_a is not None:
+                st.markdown(
+                    f"- ML {_team_md(home_team, home_rec)}: `{fmt(ml_h)}` · "
+                    f"ML {_team_md(away_team, away_rec)}: `{fmt(ml_a)}`",
+                    unsafe_allow_html=True,
+                )
+
+            ml_probs_html = _market_ml_probs_html(r, home_team, away_team)
+            if ml_probs_html:
+                st.markdown(ml_probs_html, unsafe_allow_html=True)
+
+            st.markdown("**🏁 Resultado**")
+            if rr and pd.notna(rr):
+                st.markdown(
+                    _render_result_body(
+                        rr,
+                        r.get("acierto_ganador"),
+                        r.get("acierto_spread"),
+                        r.get("acierto_total"),
+                    ),
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="result-score neutral">Por jugarse</div>',
+                    unsafe_allow_html=True,
+                )
+
+            ajustes = r.get("ajustes")
+            if ajustes and pd.notna(ajustes):
+                st.caption(f"🔧 Ajustes: {ajustes}")
+
+
 # ---------- Sidebar ----------
 st.sidebar.title("🏈 NFL / NCAAF Predictor")
 
@@ -925,41 +1116,41 @@ if week is not None and not picks_df.empty:
 
 # ---------- Métricas de cabecera ----------
 if week is not None and not picks_full_df.empty:
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1:
-        st.metric("Partidos mostrados", len(picks_df))
-    with c2:
-        st.metric("Señales en spread", count_value_signals(picks_df, "valor_spread"))
-    with c3:
-        st.metric("Señales en O/U", count_value_signals(picks_df, "valor_total"))
-    with c4:
-        acc = _accuracy_metric(picks_full_df, "acierto_ganador")
-        if acc is None:
-            st.metric("Aciertos ML", "—")
-        else:
-            a, t, p = acc
-            st.metric("Aciertos ML", f"{a}/{t}", delta=f"{p}%")
-    with c5:
-        acc = _accuracy_metric(picks_full_df, "acierto_spread")
-        if acc is None:
-            st.metric("Aciertos spread", "—")
-        else:
-            a, t, p = acc
-            st.metric("Aciertos spread", f"{a}/{t}", delta=f"{p}%")
-    with c6:
-        acc = _accuracy_metric(picks_full_df, "acierto_total")
-        if acc is None:
-            st.metric("Aciertos O/U", "—")
-        else:
-            a, t, p = acc
-            st.metric("Aciertos O/U", f"{a}/{t}", delta=f"{p}%")
+    with st.expander("📊 Resumen de la semana", expanded=False):
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        with c1:
+            st.metric("Partidos mostrados", len(picks_df))
+        with c2:
+            st.metric("Señales en spread", count_value_signals(picks_df, "valor_spread"))
+        with c3:
+            st.metric("Señales en O/U", count_value_signals(picks_df, "valor_total"))
+        with c4:
+            acc = _accuracy_metric(picks_full_df, "acierto_ganador")
+            if acc is None:
+                st.metric("Aciertos ML", "—")
+            else:
+                a, t, p = acc
+                st.metric("Aciertos ML", f"{a}/{t}", delta=f"{p}%")
+        with c5:
+            acc = _accuracy_metric(picks_full_df, "acierto_spread")
+            if acc is None:
+                st.metric("Aciertos spread", "—")
+            else:
+                a, t, p = acc
+                st.metric("Aciertos spread", f"{a}/{t}", delta=f"{p}%")
+        with c6:
+            acc = _accuracy_metric(picks_full_df, "acierto_total")
+            if acc is None:
+                st.metric("Aciertos O/U", "—")
+            else:
+                a, t, p = acc
+                st.metric("Aciertos O/U", f"{a}/{t}", delta=f"{p}%")
 
-    st.caption(
-        "**ML** = acertó quién gana. "
-        "**Spread** = el resultado cubrió el spread que dio el modelo. "
-        "**O/U** = el total real cayó del lado que el modelo eligió respecto a la línea del mercado."
-    )
-    st.markdown("---")
+        st.caption(
+            "**ML** = acertó quién gana. "
+            "**Spread** = el resultado cubrió el spread que dio el modelo. "
+            "**O/U** = el total real cayó del lado que el modelo eligió respecto a la línea del mercado."
+        )
 
 
 # --- TAB: Partidos ---
@@ -972,140 +1163,38 @@ with tab_picks:
     elif picks_df.empty:
         st.warning("No hay partidos guardados para esta semana (o el filtro los ocultó).")
     else:
-        if "fecha" in picks_df.columns:
-            picks_df = picks_df.sort_values(
+        display_picks_df = picks_df
+        if "fecha" in display_picks_df.columns:
+            display_picks_df = display_picks_df.sort_values(
                 by=["fecha", "hora"], na_position="last", kind="stable"
             ).reset_index(drop=True)
 
-        has_slots = "slot" in picks_df.columns and picks_df["slot"].notna().any()
+        has_slots = "slot" in display_picks_df.columns and display_picks_df["slot"].notna().any()
+        slot_options = (
+            display_picks_df["slot"].dropna().astype(str).drop_duplicates().tolist()
+            if has_slots else []
+        )
+        selected_slot = "Todos"
+        if slot_options:
+            st.subheader("Enfrentamientos")
+            st.caption("Elige un horario para recorrer la jornada o explora todos los partidos.")
+            selected_slot = st.radio(
+                "Horario",
+                options=["Todos", *slot_options],
+                horizontal=True,
+                key=f"match_slot_{league_choice}_{season}_{week}",
+                label_visibility="collapsed",
+            )
+            if selected_slot != "Todos":
+                display_picks_df = display_picks_df[
+                    display_picks_df["slot"].astype(str) == selected_slot
+                ].reset_index(drop=True)
+            st.caption(f"Mostrando {len(display_picks_df)} de {len(picks_df)} partidos.")
 
-        current_slot = None
-        for _, r in picks_df.iterrows():
-            slot = r.get("slot") if has_slots else None
-
-            if has_slots and slot != current_slot:
-                st.markdown(
-                    f'<div class="slot-header">📅 {slot or "Sin fecha"}</div>',
-                    unsafe_allow_html=True,
-                )
-                current_slot = slot
-
-            away_team, home_team = r["partido"].split(" @ ")
-            home_rec = _resolve_record(r, "home", season, week, league_choice, records_fallback)
-            away_rec = _resolve_record(r, "away", season, week, league_choice, records_fallback)
-
-            with st.container(border=True):
-                away_title = _team_with_record(away_team, away_rec)
-                home_title = _team_with_record(home_team, home_rec)
-
-                c_away, c_at, c_home = st.columns([5, 1, 5])
-                with c_away:
-                    with st.popover(f"**{away_title}**", use_container_width=True):
-                        _render_team_history(season, away_team, league_choice)
-                with c_at:
-                    st.markdown('<div class="at-sep">@</div>', unsafe_allow_html=True)
-                with c_home:
-                    with st.popover(f"**{home_title}**", use_container_width=True):
-                        _render_team_history(season, home_team, league_choice)
-
-                dt_label = fmt_datetime(r.get("fecha"), r.get("hora"))
-                cap = f"{fmt(r.get('liga'))} · Semana {fmt(r.get('semana'))}"
-                if dt_label:
-                    cap = f"{cap} · {dt_label}"
-                st.caption(cap)
-
-                c_mod, c_mkt, c_res = st.columns([2, 2, 1.3])
-
-                with c_mod:
-                    st.markdown("**📊 Modelo**")
-                    st.markdown(f"- Marcador: `{fmt(r.get('marcador_proyectado'))}`")
-                    prob_h = _get(r, "prob_home", "prob_gana_local")
-                    prob_a = _get(r, "prob_away", "prob_gana_visita")
-                    st.markdown(
-                        f"- Prob. victoria: {_team_md(home_team, home_rec)} `{fmt(prob_h)}` · "
-                        f"{_team_md(away_team, away_rec)} `{fmt(prob_a)}`",
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(f"- Spread: `{fmt(r.get('spread_modelo'))}`")
-                    st.markdown(f"- Over/Under: `{fmt(r.get('total_modelo'))}`")
-
-                with c_mkt:
-                    st.markdown("**💼 Mercado**")
-                    odds_updated = r.get("odds_cache_updated_at")
-                    if odds_updated is not None and pd.notna(odds_updated):
-                        st.caption(f"Cuotas guardadas: {fmt(odds_updated)}")
-                    elif all(
-                        fmt(_get(r, col)) == "—"
-                        for col in ("spread_consenso", "total_consenso", "ml_home", "ml_away")
-                    ):
-                        st.caption("Sin cuotas disponibles; predicción generada solo con el modelo.")
-
-                    cons_spread = fmt(r.get("spread_consenso"))
-                    if cons_spread == "—":
-                        msl = _get(r, "market_spread_line")
-                        if msl is not None:
-                            try:
-                                msl_f = float(msl)
-                                if msl_f > 0:
-                                    cons_spread = f"{home_team} -{abs(msl_f):g}"
-                                elif msl_f < 0:
-                                    cons_spread = f"{away_team} -{abs(msl_f):g}"
-                                else:
-                                    cons_spread = "Pick'em (0)"
-                            except (TypeError, ValueError):
-                                pass
-                    st.markdown(f"- Spread: `{cons_spread}`")
-
-                    cons_total = fmt(r.get("total_consenso"))
-                    if cons_total == "—":
-                        mtl = _get(r, "market_total_line")
-                        if mtl is not None:
-                            try:
-                                cons_total = f"{float(mtl):g}"
-                            except (TypeError, ValueError):
-                                pass
-                    st.markdown(f"- Over/Under: `{cons_total}`")
-
-                    ml_h = _get(r, "ml_home", "ml_local")
-                    ml_a = _get(r, "ml_away", "ml_visita")
-                    if ml_h is not None or ml_a is not None:
-                        st.markdown(
-                            f"- ML {_team_md(home_team, home_rec)}: `{fmt(ml_h)}` · "
-                            f"ML {_team_md(away_team, away_rec)}: `{fmt(ml_a)}`",
-                            unsafe_allow_html=True,
-                        )
-
-                    ml_probs_html = _market_ml_probs_html(r, home_team, away_team)
-                    if ml_probs_html:
-                        st.markdown(ml_probs_html, unsafe_allow_html=True)
-
-                with c_res:
-                    st.markdown("**🏁 Resultado real**")
-                    rr = r.get("resultado_real")
-                    if rr and pd.notna(rr):
-                        ac = r.get("acierto_ganador")
-                        acs = r.get("acierto_spread")
-                        act = r.get("acierto_total")
-                        st.markdown(_render_result_body(rr, ac, acs, act),
-                                    unsafe_allow_html=True)
-                    else:
-                        st.markdown(
-                            '<div class="result-score neutral">Por jugarse</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                tags = []
-                for label, col in [("Spread", "valor_spread"), ("Over/Under", "valor_total")]:
-                    val = r.get(col)
-                    if val and pd.notna(val):
-                        cls = classify_value(val)
-                        tags.append(f'<span class="tag {cls}">{label}: {val}</span>')
-                if tags:
-                    st.markdown(" ".join(tags), unsafe_allow_html=True)
-
-                ajustes = r.get("ajustes")
-                if ajustes and pd.notna(ajustes):
-                    st.caption(f"🔧 Ajustes: {ajustes}")
+        match_columns = st.columns(2)
+        for game_index, (_, r) in enumerate(display_picks_df.iterrows()):
+            with match_columns[game_index % 2]:
+                _render_match_card(r, season, week, league_choice, records_fallback)
 
         marcados = False
         for col in ("valor_spread", "valor_total"):
