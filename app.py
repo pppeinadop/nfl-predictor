@@ -218,6 +218,177 @@ st.markdown("""
     border-radius: 9px;
     border-color: #dbe3ee;
   }
+  :root {
+    --ui-ink: #172033;
+    --ui-muted: #64748b;
+    --ui-line: #e2e8f0;
+    --ui-surface: #ffffff;
+    --ui-green: #087f5b;
+    --ui-green-dark: #066548;
+    --ui-green-soft: #e8f7f0;
+    --ui-orange: #e67e22;
+  }
+  .stApp {
+    background: radial-gradient(ellipse at 10% 0%, rgba(8, 127, 91, 0.06), transparent 34rem), #f3f6fa;
+  }
+  [data-testid="stAppViewContainer"] .main .block-container {
+    max-width: 1540px;
+    padding: 2.1rem clamp(1.25rem, 3vw, 3rem) 3rem;
+  }
+  [data-testid="stHeader"] {
+    background: rgba(243, 246, 250, 0.88);
+    backdrop-filter: blur(12px);
+  }
+  [data-testid="stSidebar"] {
+    background: var(--ui-surface);
+    border-right: 1px solid var(--ui-line);
+  }
+  [data-testid="stSidebar"] > div:first-child {
+    padding-top: 1.1rem;
+  }
+  h1, h2, h3 {
+    color: var(--ui-ink);
+    letter-spacing: -0.035em;
+  }
+  h1 {
+    padding-bottom: 0.7rem;
+    margin-bottom: 0.8rem;
+    border-bottom: 3px solid var(--ui-green);
+    width: fit-content;
+    max-width: 100%;
+  }
+  [data-testid="stTabs"] [role="tablist"] {
+    gap: 0.35rem;
+    border-bottom: 1px solid var(--ui-line);
+  }
+  [data-testid="stTabs"] button[role="tab"] {
+    color: var(--ui-muted);
+    font-weight: 650;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.65rem 0.65rem 0 0;
+    transition: color 140ms ease, background 140ms ease;
+  }
+  [data-testid="stTabs"] button[role="tab"]:hover,
+  [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    color: var(--ui-green-dark);
+    background: var(--ui-green-soft);
+  }
+  [data-testid="stTabs"] button[role="tab"]:focus-visible,
+  div.stButton > button:focus-visible,
+  div[data-testid="stPopover"] > button:focus-visible {
+    outline: 3px solid rgba(8, 127, 91, 0.35);
+    outline-offset: 2px;
+  }
+  [data-testid="stMetric"] {
+    min-height: 100%;
+    border: 1px solid var(--ui-line);
+    border-top: 3px solid var(--ui-green);
+    border-radius: 13px;
+    padding: 14px 16px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.035);
+    transition: transform 140ms ease, box-shadow 140ms ease;
+  }
+  [data-testid="stMetric"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
+  }
+  [data-testid="stMetricLabel"] { color: var(--ui-muted); }
+  [data-testid="stMetricValue"] { color: var(--ui-ink); font-weight: 750; }
+  [data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: var(--ui-line) !important;
+    border-radius: 16px !important;
+    background: var(--ui-surface);
+    box-shadow: 0 3px 14px rgba(15, 23, 42, 0.035);
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+  [data-testid="stVerticalBlockBorderWrapper"]:hover {
+    border-color: #cbd9d5 !important;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07);
+  }
+  div[data-testid="stPopover"] > button {
+    border-color: var(--ui-line) !important;
+    border-radius: 11px !important;
+    background: #f8fafc !important;
+    transition: border-color 140ms ease, background 140ms ease;
+  }
+  div[data-testid="stPopover"] > button:hover {
+    border-color: #9acbb9 !important;
+    background: var(--ui-green-soft) !important;
+  }
+  .tag { padding: 4px 11px; margin: 3px 6px 3px 0; }
+  .tag-value {
+    background: var(--ui-green-soft);
+    color: var(--ui-green-dark);
+    border-color: #b8e4d1;
+  }
+  .slot-header {
+    margin-top: 28px;
+    margin-bottom: 12px;
+    padding: 0 0 9px 11px;
+    border-bottom: 1px solid #d5e0e9;
+    border-left: 3px solid var(--ui-orange);
+  }
+  .result-score.hit, .ml-line .v.edge { color: var(--ui-green-dark); }
+  .badge-hit {
+    background: var(--ui-green-soft);
+    color: var(--ui-green-dark);
+    border-color: #b8e4d1;
+  }
+  .gen-confirm {
+    background: linear-gradient(120deg, #e8f7f0, #f3f9ff);
+    border-color: #c8e5d8;
+    border-left: 4px solid var(--ui-green);
+    border-radius: 13px;
+    padding: 17px 21px;
+    margin: 8px 0 18px;
+  }
+  div.stButton > button {
+    border-radius: 10px;
+    min-height: 2.6rem;
+    transition: transform 140ms ease, box-shadow 140ms ease;
+  }
+  div.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.09);
+  }
+  div.stButton > button[kind="primary"] {
+    background: var(--ui-green);
+    border-color: var(--ui-green);
+  }
+  div.stButton > button[kind="primary"]:hover {
+    background: var(--ui-green-dark);
+    border-color: var(--ui-green-dark);
+  }
+  div[data-baseweb="select"] > div {
+    border-radius: 10px;
+    border-color: #d5dee8;
+  }
+  [data-testid="stDataFrame"] {
+    border: 1px solid var(--ui-line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  @media (max-width: 760px) {
+    [data-testid="stAppViewContainer"] .main .block-container {
+      padding: 1.25rem 1rem 2rem;
+    }
+    [data-testid="stTabs"] [role="tablist"] {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: thin;
+    }
+    [data-testid="stTabs"] button[role="tab"] {
+      white-space: nowrap;
+      padding: 0.6rem 0.7rem;
+      font-size: 0.9rem;
+    }
+    [data-testid="stMetric"] { padding: 11px 12px; }
+    .slot-header { margin-top: 22px; }
+    div[data-testid="stPopover"] > button { padding: 8px 9px !important; }
+    div[data-testid="stPopover"] > button,
+    div[data-testid="stPopover"] > button p,
+    div[data-testid="stPopover"] > button strong { font-size: 0.92rem !important; }
+  }
 </style>
 """, unsafe_allow_html=True)
 
