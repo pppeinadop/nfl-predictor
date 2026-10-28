@@ -1,9 +1,12 @@
 nfl_data_py~=0.3.1
 pandas~=2.2
-numpy~=1.26
+numpy>=2.0
 requests~=2.31
 python-dotenv~=1.0
 pymongo[srv]~=4.6
 cfbd~=4.5
 scipy~=1.11
 streamlit>=1.38,<2
+
+plotly>=5.22
+streamlit-option-menu>=0.3.13
