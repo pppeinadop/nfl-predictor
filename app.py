@@ -6,8 +6,13 @@ Uso:
     streamlit run app.py
 """
 import contextlib
+import html
 import io
 import json
+import re
+import unicodedata
+import urllib.error
+import urllib.request
 
 import numpy as np
 import pandas as pd
@@ -180,6 +185,33 @@ st.markdown("""
     font-weight: 750;
     color: #94a3b8;
     padding-top: 4px;
+  }
+  [data-testid="stImage"] {
+    display: flex;
+    justify-content: center;
+  }
+  .projection-logo-fallback {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #334155;
+    font-weight: 750;
+    text-align: center;
+  }
+  .projection-score {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.8rem;
+    color: #172033;
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+  .projection-score .separator {
+    color: #94a3b8;
+    font-size: 1rem;
   }
   .gen-confirm {
     background: #eff6ff;
@@ -562,6 +594,78 @@ def _probability_fraction(value):
     return min(max(probability / 100.0, 0.0), 1.0)
 
 
+def _normalize_team_name(team: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(team))
+    return "".join(
+        character.lower()
+        for character in normalized
+        if character.isalnum() and not unicodedata.combining(character)
+    )
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _get_ncaaf_logo_urls() -> dict:
+    request = urllib.request.Request(
+        "https://site.api.espn.com/apis/site/v2/sports/football/"
+        "college-football/teams?limit=1000",
+        headers={"User-Agent": "NFL-Predictor/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = json.load(response)
+
+    teams = payload["sports"][0]["leagues"][0]["teams"]
+    logo_urls = {}
+    for entry in teams:
+        team = entry.get("team", {})
+        logos = team.get("logos", [])
+        logo = next(
+            (item.get("href") for item in logos if "default" in item.get("rel", [])),
+            None,
+        )
+        if not logo:
+            continue
+        for name in (
+            team.get("location"),
+            team.get("displayName"),
+            team.get("shortDisplayName"),
+            team.get("name"),
+            team.get("abbreviation"),
+        ):
+            if name:
+                logo_urls[_normalize_team_name(name)] = logo
+
+    if not logo_urls:
+        raise ValueError("ESPN no devolvió logos para equipos colegiales.")
+    return logo_urls
+
+
+def _team_logo_url(team: str, league: str, ncaaf_logos: dict):
+    if league == "nfl":
+        espn_abbreviations = {
+            "JAX": "jac",
+            "LA": "lar",
+            "WAS": "wsh",
+        }
+        abbreviation = espn_abbreviations.get(team.upper(), team.lower())
+        return f"https://a.espncdn.com/i/teamlogos/nfl/500/{abbreviation}.png"
+    if league == "ncaaf":
+        return ncaaf_logos.get(_normalize_team_name(team))
+    return None
+
+
+def _projected_scores(value, home_team: str, away_team: str):
+    match = re.fullmatch(r"\s*(.+?)\s+(\d+)\s+-\s+(\d+)\s+(.+?)\s*", str(value))
+    if not match:
+        return None
+    home_name, home_score, away_score, away_name = match.groups()
+    if (
+        _normalize_team_name(home_name) != _normalize_team_name(home_team)
+        or _normalize_team_name(away_name) != _normalize_team_name(away_team)
+    ):
+        return None
+    return int(home_score), int(away_score)
+
+
 def _render_result_body(rr: str, ac, acs, act) -> str:
     ac_b = _bool_value(ac)
     if ac_b is True:
@@ -882,7 +986,7 @@ def _run_generation(season, league, from_week, to_week,
     return ok, fail
 
 
-def _render_match_card(r, season, week, league, records_fallback):
+def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
     away_team, home_team = r["partido"].split(" @ ")
     home_rec = _resolve_record(r, "home", season, week, league, records_fallback)
     away_rec = _resolve_record(r, "away", season, week, league, records_fallback)
@@ -902,7 +1006,32 @@ def _render_match_card(r, season, week, league, records_fallback):
             with st.popover(f"**{away_title}**", use_container_width=True):
                 _render_team_history(season, away_team, league)
         with c_projection:
-            st.metric("PROYECCIÓN DEL MODELO", fmt(r.get("marcador_proyectado")))
+            st.caption("PROYECCIÓN DEL MODELO")
+            logo_cols = st.columns(2)
+            for col, team in [(logo_cols[0], away_team), (logo_cols[1], home_team)]:
+                with col:
+                    logo_url = _team_logo_url(team, league, ncaaf_logos)
+                    if logo_url:
+                        st.image(logo_url, width=52)
+                    else:
+                        st.markdown(
+                            '<div class="projection-logo-fallback">'
+                            f'{html.escape(team)}</div>',
+                            unsafe_allow_html=True,
+                        )
+            scores = _projected_scores(
+                r.get("marcador_proyectado"), home_team, away_team
+            )
+            if scores is None:
+                st.markdown(f"**{fmt(r.get('marcador_proyectado'))}**")
+            else:
+                home_score, away_score = scores
+                st.markdown(
+                    f'<div class="projection-score">'
+                    f'<span>{away_score}</span><span class="separator">–</span>'
+                    f'<span>{home_score}</span></div>',
+                    unsafe_allow_html=True,
+                )
         with c_home:
             st.caption("LOCAL")
             with st.popover(f"**{home_title}**", use_container_width=True):
@@ -1191,10 +1320,29 @@ with tab_picks:
                 ].reset_index(drop=True)
             st.caption(f"Mostrando {len(display_picks_df)} de {len(picks_df)} partidos.")
 
+        ncaaf_logos = {}
+        if league_choice == "ncaaf":
+            try:
+                ncaaf_logos = _get_ncaaf_logo_urls()
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                json.JSONDecodeError,
+                KeyError,
+                IndexError,
+                ValueError,
+            ) as error:
+                st.warning(
+                    "No se pudieron cargar los logos de equipos colegiales; "
+                    f"se mostrarán sus nombres. Detalle: {error}"
+                )
+
         match_columns = st.columns(2)
         for game_index, (_, r) in enumerate(display_picks_df.iterrows()):
             with match_columns[game_index % 2]:
-                _render_match_card(r, season, week, league_choice, records_fallback)
+                _render_match_card(
+                    r, season, week, league_choice, records_fallback, ncaaf_logos
+                )
 
         marcados = False
         for col in ("valor_spread", "valor_total"):
