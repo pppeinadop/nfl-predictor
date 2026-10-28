@@ -720,11 +720,29 @@ else:
 
 # ---------- Cabecera ----------
 league_label = league_options[league_choice]
-if week is not None:
-    st.title(f"{league_label} · Temporada {season} · Semana {week}")
-else:
-    st.title(f"{league_label} · Temporada {season}")
 
+# ---------- Cabecera nueva ----------
+
+st.markdown("""
+<div class="custom-card">
+    <div class="card-title">
+        NFL Predictor Pro
+    </div>
+
+    <div class="card-value">
+        🏈 Advanced Betting Analytics
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+if week is not None:
+    st.subheader(
+        f"{league_label} · Temporada {season} · Semana {week}"
+    )
+else:
+    st.subheader(
+        f"{league_label} · Temporada {season}"
+    )
 
 # ---------- Tabs ----------
 tab_picks, tab_props, tab_gen, tab_calib, tab_report, tab_console = st.tabs(
