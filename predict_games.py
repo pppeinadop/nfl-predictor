@@ -259,6 +259,16 @@ def _int_scores(home_score: float, away_score: float, spread_home: float) -> tup
     return h, a
 
 
+def _spread_line_from_projected_score(home_score: int, away_score: int) -> float:
+    """Return a half-point spread the projected integer score would cover."""
+    margin = home_score - away_score
+    if margin > 0:
+        return float(margin) - 0.5
+    if margin < 0:
+        return float(margin) + 0.5
+    return 0.0
+
+
 def _match_market_row(market: pd.DataFrame, home: str, away: str, league: str):
     if market is None or market.empty:
         return None
@@ -291,6 +301,52 @@ def _spread_cover_hit(model_spread_home: float, actual_margin: float):
     if diff == 0:
         return None
     return bool(diff > 0)
+
+
+def _market_value_labels(
+    home_team, away_team, model_spread_home, model_total,
+    market_spread_home, market_total,
+) -> dict:
+    """Compare model-derived lines with market consensus in home-margin convention."""
+    labels = {}
+    if (
+        model_spread_home is not None
+        and market_spread_home is not None
+        and pd.notna(model_spread_home)
+        and pd.notna(market_spread_home)
+    ):
+        diff_spread = float(model_spread_home) - float(market_spread_home)
+        edge_spread = _round_half(abs(diff_spread))
+        labels["valor_spread"] = (
+            f"{home_team} +{edge_spread}"
+            if diff_spread > config.EDGE_THRESHOLD_SPREAD
+            else (
+                f"{away_team} +{edge_spread}"
+                if diff_spread < -config.EDGE_THRESHOLD_SPREAD
+                else "Sin valor claro"
+            )
+        )
+        if abs(diff_spread) >= config.EDGE_SUSPICIOUS_SPREAD:
+            labels["valor_spread"] += " ⚠"
+
+    if (
+        model_total is not None
+        and market_total is not None
+        and pd.notna(model_total)
+        and pd.notna(market_total)
+    ):
+        diff_total = float(model_total) - float(market_total)
+        edge_total = _round_half(abs(diff_total))
+        if diff_total > config.EDGE_THRESHOLD_TOTAL:
+            labels["valor_total"] = f"Over (+{edge_total})"
+        elif diff_total < -config.EDGE_THRESHOLD_TOTAL:
+            labels["valor_total"] = f"Under ({edge_total})"
+        else:
+            labels["valor_total"] = "Sin valor claro"
+        if abs(diff_total) >= config.EDGE_SUSPICIOUS_TOTAL:
+            labels["valor_total"] += " ⚠"
+
+    return labels
 
 
 def _total_cover_hit(model_total: float, market_total: float, actual_total: float):
@@ -387,7 +443,7 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
             home_score_final, away_score_final
         )
 
-        model_total = _round_half(home_score_final + away_score_final)
+        expected_model_total = _round_half(home_score_final + away_score_final)
 
         final_margin = home_score_final - away_score_final
         tiebreak = final_margin if final_margin != 0 else (elo_margin if elo_margin != 0 else 1)
@@ -397,6 +453,10 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
             model_spread_home = 0.5 if tiebreak > 0 else -0.5
 
         home_final_int, away_final_int = _int_scores(home_score_final, away_score_final, model_spread_home)
+        spread_model_line = _spread_line_from_projected_score(
+            home_final_int, away_final_int
+        )
+        model_total = float(home_final_int + away_final_int)
 
         ajustes_delta = final_margin - blended_margin
         ml_margin = raw_margin + ajustes_delta
@@ -421,7 +481,8 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
             "marcador_proyectado": f"{home} {home_final_int} - {away_final_int} {away}",
             "prob_home": format_pct(home_win_prob),
             "prob_away": format_pct(1 - home_win_prob),
-            "spread_modelo": format_spread(home, away, model_spread_home),
+            "spread_modelo": format_spread(home, away, spread_model_line),
+            "spread_model_line": spread_model_line,
             "total_modelo": model_total,
             "ajustes": "; ".join(ajustes_notas) if ajustes_notas else None,
             "margin_elo": round(elo_margin, 2),
@@ -435,7 +496,7 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
         sim_out = simulate.simulate_and_summarize(
             league=league,
             margin_mean=model_spread_home,
-            total_mean=model_total,
+            total_mean=expected_model_total,
         )
         row.update(sim_out)
 
@@ -455,7 +516,7 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
             )
             row["error_margen"] = round(float(model_spread_home - actual_margin), 1)
             row["error_total"] = round(float(model_total - actual_total), 1)
-            row["acierto_spread"] = _spread_cover_hit(model_spread_home, actual_margin)
+            row["acierto_spread"] = _spread_cover_hit(spread_model_line, actual_margin)
 
             if m is not None and pd.notna(m.get("consensus_total")):
                 row["acierto_total"] = _total_cover_hit(
@@ -479,26 +540,15 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
             if pd.notna(m["consensus_total"]):
                 row["market_total_line"] = float(m["consensus_total"])
 
-            if pd.notna(m["consensus_spread_home"]):
-                diff_spread = model_spread_home - (-m["consensus_spread_home"])
-                edge_spread = _round_half(abs(diff_spread))
-                row["valor_spread"] = (
-                    f"{home} +{edge_spread}" if diff_spread > config.EDGE_THRESHOLD_SPREAD
-                    else (f"{away} +{edge_spread}" if diff_spread < -config.EDGE_THRESHOLD_SPREAD
-                          else "Sin valor claro")
-                )
-                if abs(diff_spread) >= config.EDGE_SUSPICIOUS_SPREAD:
-                    row["valor_spread"] += " ⚠"
-            if pd.notna(m["consensus_total"]):
-                diff_total = model_total - m["consensus_total"]
-                edge_total = _round_half(abs(diff_total))
-                row["valor_total"] = (
-                    f"Over (+{edge_total})" if diff_total > config.EDGE_THRESHOLD_TOTAL
-                    else (f"Under ({edge_total})" if diff_total < -config.EDGE_THRESHOLD_TOTAL
-                          else "Sin valor claro")
-                )
-                if abs(diff_total) >= config.EDGE_SUSPICIOUS_TOTAL:
-                    row["valor_total"] += " ⚠"
+            value_labels = _market_value_labels(
+                home,
+                away,
+                spread_model_line,
+                model_total,
+                -m["consensus_spread_home"],
+                m["consensus_total"],
+            )
+            row.update(value_labels)
         results.append(row)
 
     df = pd.DataFrame(results)

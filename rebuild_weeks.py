@@ -129,6 +129,7 @@ def rebuild_week(season: int, week: int, league: str,
             "  Guardado: "
             f"{save_summary['inserted']} oficiales nuevos, "
             f"{save_summary['updated_market']} mercados actualizados, "
+            f"{save_summary['updated_projection']} proyecciones sincronizadas, "
             f"{save_summary['updated_versions']} actualizaciones, "
             f"{save_summary['locked']} bloqueados por kickoff, "
             f"{save_summary['skipped']} omitidos/protegidos."

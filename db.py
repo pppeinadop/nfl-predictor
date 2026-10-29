@@ -13,6 +13,7 @@ los ratings ni los picks de ambas ligas.
 """
 from datetime import datetime, timezone
 from copy import deepcopy
+import re
 
 import pandas as pd
 from pymongo import MongoClient, ASCENDING
@@ -143,6 +144,42 @@ def _to_utc_datetime(value):
         return None
 
 
+def _projected_model_lines(record):
+    projected_score = record.get("marcador_proyectado")
+    match = re.fullmatch(
+        r"\s*(.+?)\s+(\d+)\s+-\s+(\d+)\s+(.+?)\s*",
+        str(projected_score or ""),
+    )
+    if not match:
+        return {}
+    home_name, home_score, away_score, away_name = match.groups()
+    home_team = record.get("home_team")
+    away_team = record.get("away_team")
+    if home_name != home_team or away_name != away_team:
+        return {}
+
+    home_score = int(home_score)
+    away_score = int(away_score)
+    margin = home_score - away_score
+    spread_line = (
+        float(margin) - 0.5 if margin > 0
+        else float(margin) + 0.5 if margin < 0
+        else 0.0
+    )
+    if spread_line > 0:
+        spread = f"{home_team} -{abs(spread_line):g}"
+    elif spread_line < 0:
+        spread = f"{away_team} -{abs(spread_line):g}"
+    else:
+        spread = "Pick'em (0)"
+
+    return {
+        "spread_modelo": spread,
+        "spread_model_line": spread_line,
+        "total_modelo": float(home_score + away_score),
+    }
+
+
 def _kickoff_from_record(record):
     kickoff = _to_utc_datetime(record.get("kickoff_utc"))
     if kickoff is not None:
@@ -174,7 +211,19 @@ def _result_fields(official, record):
     actual_margin = home_pts - away_pts
     actual_total = home_pts + away_pts
     model_margin = official.get("margin_final")
-    model_total = official.get("total_modelo")
+    projected_lines = _projected_model_lines(official)
+    model_spread_line = record.get("spread_model_line")
+    if model_spread_line is None:
+        model_spread_line = projected_lines.get("spread_model_line")
+    if model_spread_line is None:
+        model_spread_line = official.get("spread_model_line")
+    if model_spread_line is None:
+        model_spread_line = model_margin
+    model_total = record.get("total_modelo", official.get("total_modelo"))
+    if "total_modelo" not in record or record["total_modelo"] is None:
+        model_total = projected_lines.get(
+            "total_modelo", official.get("total_modelo")
+        )
     result = {
         "home_score_real": home_pts,
         "away_score_real": away_pts,
@@ -188,8 +237,12 @@ def _result_fields(official, record):
             result["acierto_ganador"] = None
         if model_margin is not None:
             result["error_margen"] = round(float(model_margin) - actual_margin, 1)
-            if float(model_margin) != 0:
-                diff = actual_margin - float(model_margin) if float(model_margin) > 0 else float(model_margin) - actual_margin
+            if model_spread_line is not None and float(model_spread_line) != 0:
+                diff = (
+                    actual_margin - float(model_spread_line)
+                    if float(model_spread_line) > 0
+                    else float(model_spread_line) - actual_margin
+                )
                 result["acierto_spread"] = None if diff == 0 else bool(diff > 0)
             else:
                 result["acierto_spread"] = None
@@ -225,6 +278,7 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
         "inserted": 0,
         "updated_versions": 0,
         "updated_market": 0,
+        "updated_projection": 0,
         "locked": 0,
         "skipped": 0,
     }
@@ -237,6 +291,13 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
         "market_spread_line",
         "market_total_line",
         "odds_cache_updated_at",
+    )
+    projection_fields = (
+        "spread_modelo",
+        "spread_model_line",
+        "total_modelo",
+    )
+    value_fields = (
         "valor_spread",
         "valor_total",
     )
@@ -270,7 +331,17 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
         if prediction_mode == "official":
             if official:
                 # Preserve the official forecast while refreshing independently sourced market lines.
-                updates = _result_fields(official, record)
+                same_projection = (
+                    record.get("marcador_proyectado")
+                    == official.get("marcador_proyectado")
+                )
+                result_record = record.copy()
+                official_projection = _projected_model_lines(official)
+                if official_projection:
+                    result_record.update(official_projection)
+                elif not same_projection:
+                    result_record.pop("spread_model_line", None)
+                updates = _result_fields(official, result_record)
                 market_updates = {
                     field: record[field]
                     for field in market_fields
@@ -279,6 +350,23 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
                 if market_updates:
                     updates.update(market_updates)
                     summary["updated_market"] += 1
+                projection_source = official_projection or (
+                    record if same_projection else {}
+                )
+                projection_updates = {
+                    field: projection_source[field]
+                    for field in projection_fields
+                    if projection_source.get(field) is not None
+                }
+                if same_projection:
+                    projection_updates.update({
+                        field: record[field]
+                        for field in value_fields
+                        if record.get(field) is not None
+                    })
+                if projection_updates:
+                    updates.update(projection_updates)
+                    summary["updated_projection"] += 1
                 if updates:
                     db.weekly_picks.update_one(query, {"$set": updates})
                 else:
@@ -353,6 +441,7 @@ def sync_final_score(league: str, season: int, week: int, home_team: str,
     })
     if not result:
         return False
+    result.update(_projected_model_lines(official))
         
     db.weekly_picks.update_one(query, {"$set": result})
     return True
