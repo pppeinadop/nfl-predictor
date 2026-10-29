@@ -1572,6 +1572,35 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
     rr = r.get("resultado_real")
     model_spread = fmt(r.get("spread_modelo"))
     model_total = fmt(r.get("total_modelo"))
+    market_spread_line = _get(r, "market_spread_line")
+    market_total_line = _get(r, "market_total_line")
+    projected_scores = _projected_scores(
+        r.get("marcador_proyectado"), home_team, away_team
+    )
+    projected_spread_line = r.get("spread_model_line")
+    evaluated_spread = r.get("acierto_spread")
+    if projected_scores is not None:
+        projected_home_score, projected_away_score = projected_scores
+        projected_spread_line = predict_games._spread_line_from_projected_score(
+            projected_home_score, projected_away_score
+        )
+        model_spread = predict_games.format_spread(
+            home_team, away_team, projected_spread_line
+        )
+        model_total = str(projected_home_score + projected_away_score)
+        try:
+            actual_margin = int(r["home_score_real"]) - int(r["away_score_real"])
+            if projected_spread_line == 0:
+                evaluated_spread = None
+            else:
+                spread_diff = (
+                    actual_margin - projected_spread_line
+                    if projected_spread_line > 0
+                    else projected_spread_line - actual_margin
+                )
+                evaluated_spread = None if spread_diff == 0 else spread_diff > 0
+        except (KeyError, TypeError, ValueError):
+            pass
     cons_spread = fmt(r.get("spread_consenso"))
     if cons_spread == "—":
         market_spread_line = _get(r, "market_spread_line")
@@ -1641,9 +1670,7 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
                 f'{record_html}</div>'
             )
 
-        scores = _projected_scores(
-            r.get("marcador_proyectado"), home_team, away_team
-        )
+        scores = projected_scores
         if scores is None:
             scoreline = html.escape(fmt(r.get("marcador_proyectado")))
         else:
@@ -1713,7 +1740,7 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
             result_content = _render_result_body(
                 html.escape(str(rr)),
                 r.get("acierto_ganador"),
-                r.get("acierto_spread"),
+                evaluated_spread,
                 r.get("acierto_total"),
             )
         else:
@@ -1728,8 +1755,17 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         )
 
         tags = []
-        for label, col in [("Spread", "valor_spread"), ("Over/Under", "valor_total")]:
-            val = r.get(col)
+        value_labels = predict_games._market_value_labels(
+            home_team,
+            away_team,
+            projected_spread_line,
+            sum(projected_scores) if projected_scores is not None else r.get("total_modelo"),
+            market_spread_line,
+            market_total_line,
+        )
+
+        for label, field in [("Spread", "valor_spread"), ("Over/Under", "valor_total")]:
+            val = value_labels.get(field, r.get(field))
             if val and pd.notna(val):
                 cls = classify_value(val)
                 tags.append(f'<span class="tag {cls}">{label}: {val}</span>')
