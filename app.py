@@ -2099,9 +2099,9 @@ with tab_gen:
     col_c, col_d, col_e = st.columns(3)
     with col_c:
         skip_odds = st.checkbox(
-            "Usar caché de mercado (skip-odds)",
-            value=True,
-            help="Solo cache. NUNCA llama a The Odds API. Ideal para regenerar histórico.",
+            "Solo usar caché de mercado (sin consultar API)",
+            value=False,
+            help="Activado: solo usa la caché y nunca consulta The Odds API. Desactivado: usa la caché y consulta la API si faltan cuotas.",
         )
     with col_d:
         refresh_odds = st.checkbox(
