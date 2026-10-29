@@ -723,6 +723,295 @@ st.markdown("""
       padding-top: 1.25rem;
     }
   }
+  .matchday-filter-kicker,
+  .scoreboard-team-kicker,
+  .scoreboard-projection-label {
+    color: #8fa3b3;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .matchday-filter-kicker {
+    margin-bottom: 0.35rem;
+    color: var(--ui-green);
+  }
+  .scoreboard-meta {
+    color: #9aabba;
+    font-size: 0.86rem;
+    font-weight: 650;
+  }
+  .scoreboard-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .scoreboard-matchup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.95fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(0.65rem, 2.5vw, 2rem);
+    padding: 1.4rem clamp(0.25rem, 2vw, 1.5rem) 1rem;
+  }
+  .scoreboard-team-panel {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+  }
+  .scoreboard-team-panel.away {
+    align-items: flex-start;
+  }
+  .scoreboard-team-panel.home {
+    align-items: flex-end;
+  }
+  .scoreboard-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.32rem 0.65rem;
+    border: 1px solid #354757;
+    border-radius: 999px;
+    background: #192733;
+    color: #c5d2dc;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .scoreboard-status.final {
+    color: #a4f5ce;
+    background: #173a32;
+    border-color: #28664f;
+  }
+  .scoreboard-team-kicker,
+  .scoreboard-projection-label {
+    margin-bottom: 0.55rem;
+    text-align: center;
+  }
+  .scoreboard-team-panel.away .scoreboard-team-kicker,
+  .scoreboard-team-panel.away .scoreboard-team-name,
+  .scoreboard-team-panel.away .scoreboard-team-record {
+    text-align: left;
+  }
+  .scoreboard-team-panel.home .scoreboard-team-kicker,
+  .scoreboard-team-panel.home .scoreboard-team-name,
+  .scoreboard-team-panel.home .scoreboard-team-record {
+    text-align: right;
+  }
+  .scoreboard-team-logo {
+    display: flex;
+    min-height: 92px;
+    align-items: center;
+    justify-content: center;
+  }
+  .scoreboard-team-logo img {
+    display: block;
+    width: clamp(64px, 8vw, 92px);
+    max-height: 92px;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.3));
+  }
+  .scoreboard-team-logo span {
+    color: var(--ui-ink);
+    font-size: 1.35rem;
+    font-weight: 900;
+  }
+  .scoreboard-team-name {
+    color: #edf4fa;
+    font-size: clamp(1.05rem, 2.1vw, 1.45rem);
+    font-weight: 850;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+  .scoreboard-team-record {
+    margin-top: 0.2rem;
+    color: #91a3b2;
+    font-size: 0.82rem;
+  }
+  .scoreboard-projection {
+    min-width: 0;
+    text-align: center;
+  }
+  .scoreboard-projection-label {
+    color: var(--ui-orange);
+  }
+  .scoreboard-team-logo-fallback {
+    min-height: 84px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-ink);
+    font-size: 1.15rem;
+    font-weight: 850;
+    text-align: center;
+  }
+  .scoreboard-scoreline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.55rem, 2vw, 1.2rem);
+    color: #f2f7fb;
+    font-size: clamp(2.4rem, 5vw, 3.65rem);
+    font-variant-numeric: tabular-nums;
+    font-weight: 900;
+    letter-spacing: -0.06em;
+    line-height: 1.1;
+    text-shadow: 0 0 28px rgba(66, 217, 154, 0.12);
+  }
+  .scoreboard-score-separator {
+    color: #708391;
+    font-size: 0.68em;
+    font-weight: 600;
+  }
+  .scoreboard-probability {
+    margin-top: 0.9rem;
+    padding: 0.8rem 1rem 0.85rem;
+    border: 1px solid #263846;
+    border-radius: 12px;
+    background: rgba(8, 17, 24, 0.52);
+  }
+  .scoreboard-probability-labels {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.55rem;
+    color: #c2ced8;
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+  .scoreboard-probability-labels .away {
+    color: #76e4b1;
+  }
+  .scoreboard-probability-labels .home {
+    color: #ffbd72;
+    text-align: right;
+  }
+  .scoreboard-probability-track {
+    display: flex;
+    overflow: hidden;
+    height: 8px;
+    border-radius: 999px;
+    background: #253440;
+  }
+  .scoreboard-probability-track span {
+    display: block;
+    height: 100%;
+    transition: width 180ms ease;
+  }
+  .scoreboard-probability-track .away {
+    background: linear-gradient(90deg, #20b77a, #64e6ac);
+  }
+  .scoreboard-probability-track .home {
+    background: linear-gradient(90deg, #ffbd72, #e98732);
+  }
+  .scoreboard-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.8rem;
+  }
+  .scoreboard-value-panel {
+    min-width: 0;
+    padding: 0.8rem 0.95rem;
+    border: 1px solid #2b3d4b;
+    border-radius: 12px;
+    background: linear-gradient(145deg, #15232e, #111c26);
+  }
+  .scoreboard-value-title {
+    margin-bottom: 0.4rem;
+    color: #8fa3b3;
+    font-size: 0.7rem;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .scoreboard-value-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.28rem 0;
+    color: #a9bac7;
+    font-size: 0.84rem;
+  }
+  .scoreboard-value-row + .scoreboard-value-row {
+    border-top: 1px solid rgba(66, 83, 97, 0.45);
+  }
+  .scoreboard-value-row strong {
+    color: #eef5fa;
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .scoreboard-value-panel.market .scoreboard-value-title {
+    color: var(--ui-orange);
+  }
+  .scoreboard-result-panel {
+    margin-top: 0.8rem;
+    padding: 0.8rem 0.95rem 0.7rem;
+    border: 1px solid #2b3d4b;
+    border-radius: 12px;
+    background: #101b25;
+  }
+  .scoreboard-result-title {
+    margin-bottom: 0.4rem;
+    color: #8fa3b3;
+    font-size: 0.7rem;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .scoreboard-pending-result {
+    color: #d3dee6;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .scoreboard-result-panel .result-score {
+    margin-bottom: 0.55rem;
+    font-size: 1.15rem;
+  }
+  .scoreboard-result-panel .badge {
+    margin-right: 0.35rem;
+  }
+  @media (max-width: 760px) {
+    .scoreboard-topline {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .scoreboard-matchup {
+      grid-template-columns: minmax(0, 1fr) minmax(110px, 0.9fr) minmax(0, 1fr);
+      gap: 0.35rem;
+      padding: 1.1rem 0.1rem 0.8rem;
+    }
+    .scoreboard-team-logo {
+      min-height: 70px;
+    }
+    .scoreboard-team-logo img {
+      width: clamp(48px, 14vw, 72px);
+      max-height: 72px;
+    }
+    .scoreboard-team-name {
+      font-size: 1rem;
+    }
+    .scoreboard-team-record {
+      font-size: 0.72rem;
+    }
+    .scoreboard-values {
+      grid-template-columns: 1fr;
+    }
+    .scoreboard-scoreline {
+      font-size: clamp(2rem, 8vw, 2.7rem);
+    }
+    .scoreboard-probability-labels {
+      font-size: 0.76rem;
+    }
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1264,64 +1553,179 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
     if dt_label:
         cap = f"{cap} · {dt_label}"
 
+    prob_a = _get(r, "prob_away", "prob_gana_visita")
+    prob_h = _get(r, "prob_home", "prob_gana_local")
+    fraction_a = _probability_fraction(prob_a)
+    fraction_h = _probability_fraction(prob_h)
+    display_fraction_a = (
+        fraction_a if fraction_a is not None
+        else 1 - fraction_h if fraction_h is not None
+        else 0.5
+    )
+    display_fraction_h = 1 - display_fraction_a
+    away_probability = (
+        f"{fraction_a:.0%}" if fraction_a is not None else fmt(prob_a)
+    )
+    home_probability = (
+        f"{fraction_h:.0%}" if fraction_h is not None else fmt(prob_h)
+    )
+    rr = r.get("resultado_real")
+    model_spread = fmt(r.get("spread_modelo"))
+    model_total = fmt(r.get("total_modelo"))
+    cons_spread = fmt(r.get("spread_consenso"))
+    if cons_spread == "—":
+        market_spread_line = _get(r, "market_spread_line")
+        if market_spread_line is not None:
+            try:
+                market_spread_line = float(market_spread_line)
+                if market_spread_line > 0:
+                    cons_spread = f"{home_team} -{abs(market_spread_line):g}"
+                elif market_spread_line < 0:
+                    cons_spread = f"{away_team} -{abs(market_spread_line):g}"
+                else:
+                    cons_spread = "Pick'em (0)"
+            except (TypeError, ValueError):
+                pass
+
+    cons_total = fmt(r.get("total_consenso"))
+    if cons_total == "—":
+        market_total_line = _get(r, "market_total_line")
+        if market_total_line is not None:
+            try:
+                cons_total = f"{float(market_total_line):g}"
+            except (TypeError, ValueError):
+                pass
+    ml_h = _get(r, "ml_home", "ml_local")
+    ml_a = _get(r, "ml_away", "ml_visita")
+
+    def _value_row(label, value):
+        return (
+            '<div class="scoreboard-value-row">'
+            f'<span>{html.escape(label)}</span>'
+            f'<strong>{html.escape(str(value))}</strong>'
+            '</div>'
+        )
+
     with st.container(border=True):
-        st.caption(cap)
-        c_away, c_projection, c_home = st.columns([1, 1.15, 1])
-        with c_away:
-            st.caption("VISITANTE")
-            with st.popover(f"**{away_title}**", use_container_width=True):
-                _render_team_history(season, away_team, league)
-        with c_projection:
-            st.caption("PROYECCIÓN DEL MODELO")
-            logo_cols = st.columns(2)
-            for col, team in [(logo_cols[0], away_team), (logo_cols[1], home_team)]:
-                with col:
-                    logo_url = _team_logo_url(team, league, ncaaf_logos)
-                    if logo_url:
-                        st.image(logo_url, width=52)
-                    else:
-                        st.markdown(
-                            '<div class="projection-logo-fallback">'
-                            f'{html.escape(team)}</div>',
-                            unsafe_allow_html=True,
-                        )
-            scores = _projected_scores(
-                r.get("marcador_proyectado"), home_team, away_team
+        if rr and pd.notna(rr):
+            status_html = (
+                '<div class="scoreboard-status final">'
+                f'FINAL · {html.escape(str(rr))}</div>'
             )
-            if scores is None:
-                st.markdown(f"**{fmt(r.get('marcador_proyectado'))}**")
-            else:
-                home_score, away_score = scores
-                st.markdown(
-                    f'<div class="projection-score">'
-                    f'<span>{away_score}</span><span class="separator">–</span>'
-                    f'<span>{home_score}</span></div>',
-                    unsafe_allow_html=True,
+        else:
+            status_html = (
+                '<div class="scoreboard-status">PARTIDO PENDIENTE</div>'
+            )
+
+        def _team_panel(team, record, side, side_key):
+            logo_url = _team_logo_url(team, league, ncaaf_logos)
+            if logo_url:
+                logo_html = (
+                    f'<img src="{html.escape(logo_url, quote=True)}" '
+                    f'alt="Logo de {html.escape(team, quote=True)}">'
                 )
-        with c_home:
-            st.caption("LOCAL")
-            with st.popover(f"**{home_title}**", use_container_width=True):
+            else:
+                logo_html = f'<span>{html.escape(team)}</span>'
+            record_text = fmt(record, default="")
+            record_html = (
+                f'<div class="scoreboard-team-record">'
+                f'{html.escape(str(record_text))}</div>'
+                if record_text and record_text != "—"
+                else ""
+            )
+            return (
+                f'<div class="scoreboard-team-panel {side_key}">'
+                f'<div class="scoreboard-team-kicker">{side}</div>'
+                f'<div class="scoreboard-team-logo">{logo_html}</div>'
+                f'<div class="scoreboard-team-name">{html.escape(team)}</div>'
+                f'{record_html}</div>'
+            )
+
+        scores = _projected_scores(
+            r.get("marcador_proyectado"), home_team, away_team
+        )
+        if scores is None:
+            scoreline = html.escape(fmt(r.get("marcador_proyectado")))
+        else:
+            home_score, away_score = scores
+            scoreline = (
+                f'<span>{away_score}</span>'
+                '<span class="scoreboard-score-separator">–</span>'
+                f'<span>{home_score}</span>'
+            )
+        matchup_html = (
+            '<div class="scoreboard-topline">'
+            f'<div class="scoreboard-meta">{html.escape(cap)}</div>'
+            f'{status_html}</div>'
+            '<div class="scoreboard-matchup">'
+            f'{_team_panel(away_team, away_rec, "VISITANTE", "away")}'
+            '<div class="scoreboard-projection">'
+            '<div class="scoreboard-projection-label">MARCADOR PROYECTADO</div>'
+            f'<div class="scoreboard-scoreline">{scoreline}</div>'
+            '</div>'
+            f'{_team_panel(home_team, home_rec, "LOCAL", "home")}'
+            '</div>'
+        )
+        st.markdown(matchup_html, unsafe_allow_html=True)
+
+        history_cols = st.columns(2)
+        with history_cols[0]:
+            with st.popover("Historial visitante", use_container_width=True):
+                st.markdown(f"**{away_title}**")
+                _render_team_history(season, away_team, league)
+        with history_cols[1]:
+            with st.popover("Historial local", use_container_width=True):
+                st.markdown(f"**{home_title}**")
                 _render_team_history(season, home_team, league)
 
-        prob_a = _get(r, "prob_away", "prob_gana_visita")
-        prob_h = _get(r, "prob_home", "prob_gana_local")
-        prob_cols = st.columns(2)
-        for col, team, value in [
-            (prob_cols[0], away_team, prob_a),
-            (prob_cols[1], home_team, prob_h),
-        ]:
-            with col:
-                fraction = _probability_fraction(value)
-                if fraction is None:
-                    st.caption(f"Probabilidad de victoria · {team}: {fmt(value)}")
-                else:
-                    st.progress(fraction, text=f"{team} · {fraction:.0%} de victoria")
+        probability_html = (
+            '<div class="scoreboard-probability">'
+            '<div class="scoreboard-probability-labels">'
+            f'<span class="away">{html.escape(away_team)} · '
+            f'{html.escape(away_probability)} victoria</span>'
+            f'<span class="home">{html.escape(home_team)} · '
+            f'{html.escape(home_probability)} victoria</span>'
+            '</div><div class="scoreboard-probability-track">'
+            f'<span class="away" style="width:{display_fraction_a * 100:.2f}%"></span>'
+            f'<span class="home" style="width:{display_fraction_h * 100:.2f}%"></span>'
+            '</div></div>'
+        )
+        st.markdown(probability_html, unsafe_allow_html=True)
 
-        rr = r.get("resultado_real")
+        values_html = (
+            '<div class="scoreboard-values">'
+            '<section class="scoreboard-value-panel">'
+            '<div class="scoreboard-value-title">Pronóstico del modelo</div>'
+            f'{_value_row("Spread", model_spread)}'
+            f'{_value_row("Total", model_total)}'
+            '</section>'
+            '<section class="scoreboard-value-panel market">'
+            '<div class="scoreboard-value-title">Líneas de mercado</div>'
+            f'{_value_row("Spread", cons_spread)}'
+            f'{_value_row("Total", cons_total)}'
+            f'{_value_row(f"ML visitante · {away_team}", fmt(ml_a))}'
+            f'{_value_row(f"ML local · {home_team}", fmt(ml_h))}'
+            '</section></div>'
+        )
+        st.markdown(values_html, unsafe_allow_html=True)
+
         if rr and pd.notna(rr):
-            st.success(f"Resultado final: {rr}")
+            result_content = _render_result_body(
+                html.escape(str(rr)),
+                r.get("acierto_ganador"),
+                r.get("acierto_spread"),
+                r.get("acierto_total"),
+            )
         else:
-            st.caption("⏳ Partido pendiente")
+            result_content = (
+                '<div class="scoreboard-pending-result">POR JUGARSE</div>'
+            )
+        st.markdown(
+            '<div class="scoreboard-result-panel">'
+            '<div class="scoreboard-result-title">Resultado y evaluación</div>'
+            f'{result_content}</div>',
+            unsafe_allow_html=True,
+        )
 
         tags = []
         for label, col in [("Spread", "valor_spread"), ("Over/Under", "valor_total")]:
@@ -1332,15 +1736,15 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         if tags:
             st.markdown(" ".join(tags), unsafe_allow_html=True)
 
-        with st.expander("Explorar modelo, mercado y resultado"):
+        with st.expander("Ver análisis del modelo, mercado y resultado"):
             st.markdown("**📊 Pronóstico**")
             st.markdown(
                 f"- Prob. victoria: {_team_md(home_team, home_rec)} `{fmt(prob_h)}` · "
                 f"{_team_md(away_team, away_rec)} `{fmt(prob_a)}`",
                 unsafe_allow_html=True,
             )
-            st.markdown(f"- Spread: `{fmt(r.get('spread_modelo'))}`")
-            st.markdown(f"- Over/Under: `{fmt(r.get('total_modelo'))}`")
+            st.markdown(f"- Spread: `{model_spread}`")
+            st.markdown(f"- Over/Under: `{model_total}`")
             st.markdown("**💹 Mercado**")
 
             odds_updated = r.get("odds_cache_updated_at")
@@ -1352,34 +1756,10 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
             ):
                 st.caption("Sin cuotas disponibles; predicción generada solo con el modelo.")
 
-            cons_spread = fmt(r.get("spread_consenso"))
-            if cons_spread == "—":
-                msl = _get(r, "market_spread_line")
-                if msl is not None:
-                    try:
-                        msl_f = float(msl)
-                        if msl_f > 0:
-                            cons_spread = f"{home_team} -{abs(msl_f):g}"
-                        elif msl_f < 0:
-                            cons_spread = f"{away_team} -{abs(msl_f):g}"
-                        else:
-                            cons_spread = "Pick'em (0)"
-                    except (TypeError, ValueError):
-                        pass
             st.markdown(f"- Spread: `{cons_spread}`")
 
-            cons_total = fmt(r.get("total_consenso"))
-            if cons_total == "—":
-                mtl = _get(r, "market_total_line")
-                if mtl is not None:
-                    try:
-                        cons_total = f"{float(mtl):g}"
-                    except (TypeError, ValueError):
-                        pass
             st.markdown(f"- Over/Under: `{cons_total}`")
 
-            ml_h = _get(r, "ml_home", "ml_local")
-            ml_a = _get(r, "ml_away", "ml_visita")
             if ml_h is not None or ml_a is not None:
                 st.markdown(
                     f"- ML {_team_md(home_team, home_rec)}: `{fmt(ml_h)}` · "
@@ -1571,15 +1951,23 @@ with tab_picks:
         )
         selected_slot = "Todos"
         if slot_options:
-            st.subheader("Enfrentamientos")
-            st.caption("Elige un horario para recorrer la jornada o explora todos los partidos.")
-            selected_slot = st.radio(
-                "Horario",
-                options=["Todos", *slot_options],
-                horizontal=True,
-                key=f"match_slot_{league_choice}_{season}_{week}",
-                label_visibility="collapsed",
-            )
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="matchday-filter-kicker">CENTRO DE PARTIDOS</div>',
+                    unsafe_allow_html=True,
+                )
+                st.subheader("Marcador de la semana")
+                st.caption(
+                    "Selecciona un horario para filtrar los enfrentamientos. "
+                    "Abre cada partido para consultar modelo, mercado y resultado."
+                )
+                selected_slot = st.radio(
+                    "Horario",
+                    options=["Todos", *slot_options],
+                    horizontal=True,
+                    key=f"match_slot_{league_choice}_{season}_{week}",
+                    label_visibility="collapsed",
+                )
             if selected_slot != "Todos":
                 display_picks_df = display_picks_df[
                     display_picks_df["slot"].astype(str) == selected_slot
@@ -1603,12 +1991,10 @@ with tab_picks:
                     f"se mostrarán sus nombres. Detalle: {error}"
                 )
 
-        match_columns = st.columns(2)
-        for game_index, (_, r) in enumerate(display_picks_df.iterrows()):
-            with match_columns[game_index % 2]:
-                _render_match_card(
-                    r, season, week, league_choice, records_fallback, ncaaf_logos
-                )
+        for _, r in display_picks_df.iterrows():
+            _render_match_card(
+                r, season, week, league_choice, records_fallback, ncaaf_logos
+            )
 
         marcados = False
         for col in ("valor_spread", "valor_total"):
