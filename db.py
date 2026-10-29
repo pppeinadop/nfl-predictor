@@ -213,14 +213,33 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
                       prediction_mode: str = "official") -> dict:
     """Guarda pronósticos sin sobrescribir el oficial.
 
-    official: crea el registro oficial solo una vez y solo antes del kickoff.
+    official: crea el pronóstico una sola vez antes del kickoff; las líneas de
+        mercado pueden actualizarse después sin cambiar los valores del modelo.
     update: agrega una versión prepartido inmutable en prediction_versions.
     """
     if prediction_mode not in {"official", "update"}:
         raise ValueError("prediction_mode debe ser 'official' o 'update'.")
     db = get_db()
     now = datetime.now(timezone.utc)
-    summary = {"inserted": 0, "updated_versions": 0, "locked": 0, "skipped": 0}
+    summary = {
+        "inserted": 0,
+        "updated_versions": 0,
+        "updated_market": 0,
+        "locked": 0,
+        "skipped": 0,
+    }
+    market_fields = (
+        "spread_consenso",
+        "total_consenso",
+        "ml_home",
+        "ml_away",
+        "casas_usadas",
+        "market_spread_line",
+        "market_total_line",
+        "odds_cache_updated_at",
+        "valor_spread",
+        "valor_total",
+    )
 
     for source in df.to_dict("records"):
         record = _mongo_safe_record(deepcopy(source))
@@ -250,11 +269,20 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
         official = db.weekly_picks.find_one(query)
         if prediction_mode == "official":
             if official:
-                # Solo se sincronizan resultados finales; las variables predictivas quedan intactas.
-                result = _result_fields(official, record)
-                if result:
-                    db.weekly_picks.update_one(query, {"$set": result})
-                summary["skipped"] += 1
+                # Preserve the official forecast while refreshing independently sourced market lines.
+                updates = _result_fields(official, record)
+                market_updates = {
+                    field: record[field]
+                    for field in market_fields
+                    if record.get(field) is not None
+                }
+                if market_updates:
+                    updates.update(market_updates)
+                    summary["updated_market"] += 1
+                if updates:
+                    db.weekly_picks.update_one(query, {"$set": updates})
+                else:
+                    summary["skipped"] += 1
                 continue
             if kickoff is None or kickoff <= now:
                 summary["locked"] += 1

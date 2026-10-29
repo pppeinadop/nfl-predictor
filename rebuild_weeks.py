@@ -30,6 +30,21 @@ def _market_empty():
     return pd.DataFrame()
 
 
+def _has_market_lines(market: pd.DataFrame) -> bool:
+    if market is None or market.empty:
+        return False
+    fields = (
+        "consensus_spread_home",
+        "consensus_total",
+        "consensus_ml_home",
+        "consensus_ml_away",
+    )
+    return any(
+        field in market.columns and market[field].notna().any()
+        for field in fields
+    )
+
+
 def _resolve_market(season: int, week: int, league: str,
                     skip_odds: bool, refresh_odds: bool) -> pd.DataFrame:
     """
@@ -43,9 +58,11 @@ def _resolve_market(season: int, week: int, league: str,
         return _fetch_and_cache(season, week, league)
 
     cached = db.get_market_cache(season, week, league)
-    if not cached.empty:
+    if _has_market_lines(cached):
         print(f"  Mercado desde cache: {len(cached)} partidos")
         return cached
+    if not cached.empty:
+        print(f"  Cache de semana {week} sin líneas utilizables; buscando cuotas actuales")
 
     if skip_odds:
         print(f"  Sin cache para semana {week} (skip-odds, no se llama a la API)")
@@ -60,6 +77,12 @@ def _fetch_and_cache(season: int, week: int, league: str) -> pd.DataFrame:
         sport_key = config.LEAGUES[league]["odds_sport_key"]
         odds_events = data_fetch.get_game_odds(sport_key)
         market = data_fetch.get_consensus_lines(odds_events)
+        if not _has_market_lines(market):
+            print(
+                "  The Odds API respondió, pero no devolvió líneas utilizables "
+                "de moneyline, spread o total."
+            )
+            return _market_empty()
         if not market.empty:
             try:
                 db.save_market_cache(market, season, week, league)
@@ -105,6 +128,7 @@ def rebuild_week(season: int, week: int, league: str,
         print(
             "  Guardado: "
             f"{save_summary['inserted']} oficiales nuevos, "
+            f"{save_summary['updated_market']} mercados actualizados, "
             f"{save_summary['updated_versions']} actualizaciones, "
             f"{save_summary['locked']} bloqueados por kickoff, "
             f"{save_summary['skipped']} omitidos/protegidos."
