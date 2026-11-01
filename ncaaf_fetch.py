@@ -107,8 +107,39 @@ def get_completed_games(season: int, before_week: int = None) -> pd.DataFrame:
 
 
 def get_week_games(season: int, week: int) -> pd.DataFrame:
-    """Todos los partidos de esa semana, hayan terminado o no."""
-    return get_schedule(season, week=week)
+    """Obtiene la semana pedida; usa el calendario completo si falla el filtro de CFBD."""
+    week = int(week)
+    games = get_schedule(season, week=week)
+    if not games.empty:
+        return games
+
+    season_schedule = get_schedule(season)
+    if season_schedule.empty or "week" not in season_schedule.columns:
+        print(
+            f"[Aviso] CFBD no devolvió calendario para la temporada {season}."
+        )
+        return pd.DataFrame()
+
+    season_schedule = season_schedule.copy()
+    season_schedule["week"] = pd.to_numeric(
+        season_schedule["week"], errors="coerce"
+    )
+    games = season_schedule[season_schedule["week"] == week].copy()
+    if not games.empty:
+        print(
+            f"[Aviso] CFBD no encontró la semana {week} con filtro directo; "
+            "se recuperó desde el calendario completo."
+        )
+        return games
+
+    available_weeks = sorted(
+        season_schedule["week"].dropna().astype(int).unique().tolist()
+    )
+    print(
+        f"[Aviso] CFBD no tiene partidos en la semana {week} de {season}. "
+        f"Semanas disponibles: {available_weeks or 'ninguna'}."
+    )
+    return pd.DataFrame()
 
 
 def _previous_season_games(season: int):
