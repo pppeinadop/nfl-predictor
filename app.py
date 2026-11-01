@@ -1641,14 +1641,31 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         )
 
     with st.container(border=True):
+        retrospective = r.get("retrospective")
+        is_retrospective = pd.notna(retrospective) and bool(retrospective)
+        game_completed = r.get("game_completed")
+        final_result_pending = (
+            is_retrospective
+            and pd.notna(game_completed)
+            and not bool(game_completed)
+        )
         if rr and pd.notna(rr):
             status_html = (
                 '<div class="scoreboard-status final">'
                 f'FINAL · {html.escape(str(rr))}</div>'
             )
+        elif final_result_pending:
+            status_html = (
+                '<div class="scoreboard-status">RESULTADO FINAL PENDIENTE</div>'
+            )
         else:
             status_html = (
                 '<div class="scoreboard-status">PARTIDO PENDIENTE</div>'
+            )
+        if is_retrospective:
+            status_html += (
+                '<div class="scoreboard-status retrospective">'
+                'RECONSTRUCCIÓN · DESPUÉS DEL KICKOFF</div>'
             )
 
         def _team_panel(team, record, side, side_key):
@@ -1750,6 +1767,10 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
             )
         else:
             result_content = (
+                '<div class="scoreboard-pending-result">'
+                'ESPERANDO EL RESULTADO FINAL'
+                '</div>'
+                if final_result_pending else
                 '<div class="scoreboard-pending-result">POR JUGARSE</div>'
             )
         st.markdown(
@@ -2134,31 +2155,60 @@ with tab_gen:
 
     prediction_mode_label = st.radio(
         "Tipo de predicción",
-        options=["Oficial (crear una sola vez)", "Actualizar antes del partido (guardar versión)"],
+        options=[
+            "Oficial (crear una sola vez)",
+            "Actualizar antes del partido (guardar versión)",
+            "Reconstrucción histórica (solo partidos tras kickoff faltantes)",
+        ],
         horizontal=True,
         help=(
             "La oficial no se reemplaza. La actualización crea una versión aparte y solo se acepta "
-            "si el partido todavía no comenzó."
+            "si el partido todavía no comenzó. La reconstrucción histórica agrega solo partidos "
+            "que ya iniciaron y no tienen pronóstico, sin modificar los registros existentes."
         ),
     )
-    prediction_mode = "update" if prediction_mode_label.startswith("Actualizar") else "official"
+    if prediction_mode_label.startswith("Actualizar"):
+        prediction_mode = "update"
+    elif prediction_mode_label.startswith("Reconstrucción"):
+        prediction_mode = "historical"
+    else:
+        prediction_mode = "official"
+    historical_mode = prediction_mode == "historical"
+
+    if historical_mode:
+        st.warning(
+            "Modo retrospectivo: solo agrega partidos que ya iniciaron y no tengan pronóstico. "
+            "No reemplaza pronósticos guardados, usa cuotas solo si la caché es anterior "
+            "al kickoff y deja el mercado como no disponible en caso contrario."
+        )
 
     col_c, col_d, col_e = st.columns(3)
     with col_c:
-        skip_odds = st.checkbox(
-            "Solo usar caché de mercado (sin consultar API)",
-            value=False,
-            help="Activado: solo usa la caché y nunca consulta The Odds API. Desactivado: usa la caché y consulta la API si faltan cuotas.",
-        )
+        if historical_mode:
+            st.caption("Reconstrucción histórica: solo caché; sin llamadas de cuotas.")
+            skip_odds = True
+        else:
+            skip_odds = st.checkbox(
+                "Solo usar caché de mercado (sin consultar API)",
+                value=False,
+                help=(
+                    "Activado: solo usa la caché y nunca consulta The Odds API. "
+                    "Desactivado: usa la caché y consulta la API si faltan cuotas."
+                ),
+            )
     with col_d:
-        refresh_odds = st.checkbox(
-            "Refrescar odds", value=False,
-            help="Fuerza llamar a The Odds API aunque ya haya cache (consume cuota).",
-        )
+        if historical_mode:
+            st.caption("Cuotas actuales: desactivadas.")
+            refresh_odds = False
+        else:
+            refresh_odds = st.checkbox(
+                "Refrescar odds", value=False,
+                help="Fuerza llamar a The Odds API aunque ya haya cache (consume cuota).",
+            )
     with col_e:
         verbose = st.checkbox("Mostrar detalle", value=False)
 
-    if refresh_odds:
+    if refresh_odds and not historical_mode:
         st.info("Se consultará The Odds API. Esta opción prevalece sobre la caché y puede consumir cuota.")
 
     if to_week < from_week:
@@ -2180,7 +2230,7 @@ with tab_gen:
     )
 
     api_calls = 0
-    if to_week >= from_week and (not skip_odds or refresh_odds):
+    if not historical_mode and to_week >= from_week and (not skip_odds or refresh_odds):
         api_calls = (int(to_week) - int(from_week) + 1)
     if api_calls > 0:
         st.warning(f"⚠ Se harán hasta **{api_calls} llamada(s)** a The Odds API.")

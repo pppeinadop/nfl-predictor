@@ -106,16 +106,27 @@ def rebuild_week(season: int, week: int, league: str,
 
     try:
         db.ensure_indexes()
-        predict_games.update_elo_with_results(season, week, league)
+        historical = prediction_mode == "historical"
+        ratings = predict_games.update_elo_with_results(
+            season, week, league, persist=not historical
+        )
         # Fuerza una lectura fresca del reporte de lesiones en cada ejecución.
         try:
             import adjustments
             adjustments._injury_cache.clear()
         except Exception:
             pass
-        market = _resolve_market(season, week, league, skip_odds, refresh_odds)
+        if historical:
+            market = db.get_market_cache(season, week, league)
+            print(
+                "  Reconstrucción histórica: partidos tras kickoff sin registro; "
+                "mercado exclusivamente desde caché."
+            )
+        else:
+            market = _resolve_market(season, week, league, skip_odds, refresh_odds)
         picks = predict_games.build_weekly_picks(
-            season, week, league, market_df=market
+            season, week, league, market_df=market,
+            historical=historical, ratings=ratings if historical else None,
         )
 
         if picks.empty:
@@ -135,13 +146,20 @@ def rebuild_week(season: int, week: int, league: str,
             f"{save_summary['updated_market']} mercados actualizados, "
             f"{save_summary['updated_projection']} proyecciones sincronizadas, "
             f"{save_summary['updated_versions']} actualizaciones, "
+            f"{save_summary['historical_inserted']} retrospectivas nuevas, "
+            f"{save_summary['historical_pending_result']} esperando resultado final, "
+            f"{save_summary['historical_missing_result']} sin resultado final, "
+            f"{save_summary['historical_unverified_kickoff']} kickoff sin verificar, "
             f"{save_summary['locked']} bloqueados por kickoff, "
             f"{save_summary['skipped']} omitidos/protegidos."
         )
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        if prediction_mode == "official":
+        if prediction_mode in {"official", "historical"}:
             export_picks = db.get_weekly_picks(season, week, league)
-            path = os.path.join(OUTPUT_DIR, f"picks_{league}_semana_{week}_oficial.csv")
+            suffix = "historico" if historical else "oficial"
+            path = os.path.join(
+                OUTPUT_DIR, f"picks_{league}_semana_{week}_{suffix}.csv"
+            )
         else:
             export_picks = db.get_prediction_versions(season, week, league)
             path = os.path.join(OUTPUT_DIR, f"picks_{league}_semana_{week}_actualizaciones.csv")
@@ -212,8 +230,11 @@ def main():
                         help="Fuerza llamada a la API aunque ya haya cache.")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
-        "--mode", choices=["official", "update"], default="official",
-        help="official crea la predicción oficial una sola vez; update guarda una versión prepartido sin reemplazarla.",
+        "--mode", choices=["official", "update", "historical"], default="official",
+        help=(
+            "official crea la predicción una sola vez; update guarda una versión "
+            "prepartido; historical inserta picks faltantes después del kickoff."
+        ),
     )
     args = parser.parse_args()
 
@@ -221,6 +242,8 @@ def main():
         parser.error("--from-week no puede ser mayor que --to-week")
     if args.skip_odds and args.refresh_odds:
         parser.error("--skip-odds y --refresh-odds son mutuamente excluyentes")
+    if args.mode == "historical" and args.refresh_odds:
+        parser.error("--mode historical usa solo cuotas cacheadas; no admite --refresh-odds")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     db.ensure_indexes()

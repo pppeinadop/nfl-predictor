@@ -21,6 +21,7 @@ El --event-id se obtiene de la API de The Odds API (campo 'id' de cada partido).
 import argparse
 import json
 import os
+import sys
 
 import db
 import predict_games
@@ -44,6 +45,8 @@ def _load_props_file(path: str) -> list:
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Predicciones de futbol americano semanales")
     parser.add_argument("--season", type=int, required=True)
     parser.add_argument("--week", type=int, required=True)
@@ -54,27 +57,46 @@ def main():
     parser.add_argument("--event-id", type=str, default=None,
                          help="ID del evento (partido) en The Odds API, necesario para props.")
     parser.add_argument(
-        "--mode", choices=["official", "update"], default="official",
-        help="official crea la predicción oficial una sola vez; update guarda una versión prepartido.",
+        "--mode", choices=["official", "update", "historical"], default="official",
+        help=(
+            "official crea la predicción una sola vez; update guarda una versión "
+            "prepartido; historical inserta picks faltantes después del kickoff."
+        ),
     )
     parser.add_argument(
         "--refresh-odds", action="store_true",
         help="Consulta The Odds API y consume cuota; por defecto se usa solo la caché.",
     )
     args = parser.parse_args()
+    if args.mode == "historical" and args.refresh_odds:
+        parser.error("--mode historical usa solo cuotas cacheadas; no admite --refresh-odds")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     db.ensure_indexes()
 
-    print(f"[{args.league.upper()}] Actualizando ratings Elo con resultados hasta la semana {args.week - 1}...")
-    predict_games.update_elo_with_results(args.season, args.week, args.league)
-
-    print(f"[{args.league.upper()}] Resolviendo cuotas de mercado...")
-    market = rebuild_weeks._resolve_market(
-        args.season, args.week, args.league,
-        skip_odds=not args.refresh_odds,
-        refresh_odds=args.refresh_odds,
+    historical = args.mode == "historical"
+    action = (
+        "Calculando ratings Elo sin guardar"
+        if historical else "Actualizando ratings Elo"
     )
+    print(
+        f"[{args.league.upper()}] {action} con resultados hasta "
+        f"la semana {args.week - 1}..."
+    )
+    ratings = predict_games.update_elo_with_results(
+        args.season, args.week, args.league, persist=not historical
+    )
+
+    if historical:
+        print(f"[{args.league.upper()}] Usando solo caché de mercado histórica...")
+        market = db.get_market_cache(args.season, args.week, args.league)
+    else:
+        print(f"[{args.league.upper()}] Resolviendo cuotas de mercado...")
+        market = rebuild_weeks._resolve_market(
+            args.season, args.week, args.league,
+            skip_odds=not args.refresh_odds,
+            refresh_odds=args.refresh_odds,
+        )
 
     print(f"[{args.league.upper()}] Generando picks para la semana {args.week}...")
     # Las lesiones se vuelven a consultar en cada ejecución.
@@ -84,7 +106,8 @@ def main():
     except Exception:
         pass
     picks = predict_games.build_weekly_picks(
-        args.season, args.week, args.league, market_df=market
+        args.season, args.week, args.league, market_df=market,
+        historical=historical, ratings=ratings if historical else None,
     )
 
     save_summary = db.save_weekly_picks(
@@ -92,10 +115,11 @@ def main():
         prediction_mode=args.mode,
     )
     print(f"Resumen de guardado: {save_summary}")
-    if args.mode == "official":
+    if args.mode in {"official", "historical"}:
         export_picks = db.get_weekly_picks(args.season, args.week, args.league)
+        suffix = "historico" if historical else "oficial"
         picks_path = os.path.join(
-            OUTPUT_DIR, f"picks_{args.league}_semana_{args.week}_oficial.csv"
+            OUTPUT_DIR, f"picks_{args.league}_semana_{args.week}_{suffix}.csv"
         )
     else:
         export_picks = db.get_prediction_versions(args.season, args.week, args.league)
@@ -107,7 +131,7 @@ def main():
     print(f"\nGuardado en MongoDB y exportado a {picks_path}")
 
     # --- Props de jugador: solo aplica para NFL por ahora ---
-    if args.league == "nfl":
+    if args.league == "nfl" and not historical:
         if args.props_file and args.event_id:
             try:
                 players_of_interest = _load_props_file(args.props_file)
@@ -127,6 +151,8 @@ def main():
                 print(f"\nGuardado en MongoDB (player_props) y en {props_path}")
         else:
             print("\n(Sin props: usa --props-file y --event-id para generarlas)")
+    elif historical:
+        print("\n(Props omitidas en reconstrucción histórica)")
 
     print(f"\nListo. Para ver esta semana: "
           f"python view_week.py --season {args.season} --week {args.week} --league {args.league}")

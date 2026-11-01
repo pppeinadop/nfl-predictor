@@ -70,13 +70,26 @@ Crear una actualización prepartido como versión separada:
 python main.py --season 2026 --week 6 --league nfl --mode update
 ```
 
+Reconstruir solo pronósticos ausentes de partidos que ya iniciaron, sin
+reemplazar registros existentes ni consultar cuotas actuales:
+
+```bash
+python main.py --season 2026 --week 6 --league nfl --mode historical
+```
+
+El modo histórico usa estadísticas y ratings de semanas anteriores, excluye
+ajustes actuales de clima/lesiones y solo conserva líneas de mercado cacheadas
+antes del kickoff. Si el partido sigue en curso, no guarda el marcador parcial;
+la evaluación se completa cuando llega el resultado final. Los registros quedan
+marcados como retrospectivos.
+
 Actualizar cuotas de manera explícita (consume cuota de The Odds API):
 
 ```bash
 python main.py --season 2026 --week 6 --league nfl --refresh-odds
 ```
 
-En la interfaz web, selecciona la liga, temporada y semana; elige si se trata de la predicción oficial o una actualización prepartido. La opción de refrescar cuotas está separada y debe activarse solo cuando se quiera gastar cuota.
+En la interfaz web, selecciona la liga, temporada y semana; elige si se trata de la predicción oficial, una actualización prepartido o una reconstrucción histórica. En el modo histórico, solo se agregan partidos que ya iniciaron y no tienen pronóstico; las cuotas se consultan exclusivamente desde una caché anterior al kickoff. La opción de refrescar cuotas está separada y debe activarse solo cuando se quiera gastar cuota.
 
 ## Publicar sin costo con Streamlit Community Cloud + MongoDB Atlas
 

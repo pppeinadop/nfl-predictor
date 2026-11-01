@@ -397,15 +397,21 @@ def _load_market(season: int, week: int, league: str, market_df=None) -> pd.Data
 # ---------- Constructor principal ----------
 
 def build_weekly_picks(season: int, week: int, league: str = "nfl",
-                       market_df=None) -> pd.DataFrame:
+                       market_df=None, historical: bool = False,
+                       ratings=None) -> pd.DataFrame:
     stats = _stats_module(league)
-    ratings = elo_model.load_ratings(league)
+    ratings = (
+        elo_model.load_ratings(league) if ratings is None else dict(ratings)
+    )
     team_avgs = stats.get_team_scoring_averages(season, before_week=week)
     upcoming = stats.get_week_games(season, week)
     full_schedule = stats.get_schedule(season)
     date_col = "gameday" if league == "nfl" else "start_date"
 
-    market = _load_market(season, week, league, market_df=market_df)
+    if historical and market_df is None:
+        market = db.get_market_cache(season, week, league)
+    else:
+        market = _load_market(season, week, league, market_df=market_df)
     market_cache_updated_at = market.attrs.get("cache_updated_at") if market is not None else None
     records = _build_records(stats, season, before_week=week)
 
@@ -417,6 +423,9 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
     for _, game in upcoming.iterrows():
         home, away = game["home_team"], game["away_team"]
 
+        if historical:
+            ratings.setdefault(home, config.ELO_INITIAL)
+            ratings.setdefault(away, config.ELO_INITIAL)
         if config.DISCARD_GAMES_UNKNOWN_TEAMS and (home not in ratings or away not in ratings):
             continue
 
@@ -440,7 +449,7 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
 
         home_score_final, away_score_final, ajustes_notas = adjustments.apply_extra_adjustments(
             league, season, week, home, away, game, full_schedule, date_col,
-            home_score_final, away_score_final
+            home_score_final, away_score_final, historical=historical
         )
 
         expected_model_total = _round_half(home_score_final + away_score_final)
@@ -464,6 +473,7 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
 
         fecha, hora = _game_date_time(game, league)
         slot = _slot_label(fecha, hora)
+        kickoff_utc = _kickoff_utc(game, league)
 
         row = {
             "liga": config.LEAGUES[league]["label"],
@@ -475,7 +485,7 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
             "away_record": records.get(away, "0-0"),
             "fecha": fecha,
             "hora": hora,
-            "kickoff_utc": _kickoff_utc(game, league),
+            "kickoff_utc": kickoff_utc,
             "odds_cache_updated_at": market_cache_updated_at,
             "slot": slot,
             "marcador_proyectado": f"{home} {home_final_int} - {away_final_int} {away}",
@@ -501,8 +511,37 @@ def build_weekly_picks(season: int, week: int, league: str = "nfl",
         row.update(sim_out)
 
         m = _match_market_row(market, home, away, league)
+        if historical:
+            cache_timestamp = pd.to_datetime(
+                market_cache_updated_at, utc=True, errors="coerce"
+            )
+            kickoff_timestamp = pd.to_datetime(
+                kickoff_utc, utc=True, errors="coerce"
+            )
+            if (
+                m is None
+                or pd.isna(cache_timestamp)
+                or pd.isna(kickoff_timestamp)
+                or cache_timestamp >= kickoff_timestamp
+            ):
+                m = None
+                row["odds_cache_updated_at"] = None
 
-        has_result = pd.notna(game.get("home_score")) and pd.notna(game.get("away_score"))
+        has_scores = (
+            pd.notna(game.get("home_score"))
+            and pd.notna(game.get("away_score"))
+        )
+        if historical:
+            completed = game.get("completed")
+            game_completed = (
+                bool(completed)
+                if completed is not None and not pd.isna(completed)
+                else bool(has_scores)
+            )
+            row["game_completed"] = game_completed
+            has_result = has_scores and game_completed
+        else:
+            has_result = has_scores
         if has_result:
             home_pts, away_pts = int(game["home_score"]), int(game["away_score"])
             actual_margin = home_pts - away_pts
@@ -678,7 +717,8 @@ def print_picks(df: pd.DataFrame):
 
 # ---------- Actualización de Elo ----------
 
-def update_elo_with_results(season: int, week: int, league: str = "nfl"):
+def update_elo_with_results(season: int, week: int, league: str = "nfl",
+                            persist: bool = True):
     stats = _stats_module(league)
     ratings = {}
 
@@ -708,11 +748,13 @@ def update_elo_with_results(season: int, week: int, league: str = "nfl"):
 
     games = stats.get_completed_games(season, before_week=week).sort_values("week")
     if games.empty and ratings:
-        elo_model.save_ratings(ratings, league=league, season=season, week=max(week - 1, 0))
+        if persist:
+            elo_model.save_ratings(ratings, league=league, season=season, week=max(week - 1, 0))
     for game_week, group in games.groupby("week"):
         for _, g in group.iterrows():
             ratings = elo_model.update_ratings(
                 ratings, g["home_team"], g["away_team"], int(g["home_score"]), int(g["away_score"])
             )
-        elo_model.save_ratings(ratings, league=league, season=season, week=int(game_week))
+        if persist:
+            elo_model.save_ratings(ratings, league=league, season=season, week=int(game_week))
     return ratings

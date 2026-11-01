@@ -269,9 +269,12 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
     official: crea el pronóstico una sola vez antes del kickoff; las líneas de
         mercado pueden actualizarse después sin cambiar los valores del modelo.
     update: agrega una versión prepartido inmutable en prediction_versions.
+    historical: inserta partidos tras kickoff que no tengan registro.
     """
-    if prediction_mode not in {"official", "update"}:
-        raise ValueError("prediction_mode debe ser 'official' o 'update'.")
+    if prediction_mode not in {"official", "update", "historical"}:
+        raise ValueError(
+            "prediction_mode debe ser 'official', 'update' o 'historical'."
+        )
     db = get_db()
     now = datetime.now(timezone.utc)
     summary = {
@@ -281,6 +284,10 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
         "updated_projection": 0,
         "locked": 0,
         "skipped": 0,
+        "historical_inserted": 0,
+        "historical_pending_result": 0,
+        "historical_missing_result": 0,
+        "historical_unverified_kickoff": 0,
     }
     market_fields = (
         "spread_consenso",
@@ -328,6 +335,53 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
         record["prediction_mode"] = prediction_mode
 
         official = db.weekly_picks.find_one(query)
+        if prediction_mode == "historical":
+            if official:
+                summary["skipped"] += 1
+                continue
+            completed = record.get("game_completed")
+            has_scores = (
+                record.get("home_score_real") is not None
+                and record.get("away_score_real") is not None
+            )
+            if completed not in (True, False):
+                summary["historical_missing_result"] += 1
+                continue
+            if kickoff is None or kickoff > now:
+                summary["historical_unverified_kickoff"] += 1
+                continue
+            if completed and not has_scores:
+                summary["historical_missing_result"] += 1
+                continue
+            if completed:
+                record.update(_result_fields(record, record))
+            else:
+                for field in (
+                    "home_score_real",
+                    "away_score_real",
+                    "resultado_real",
+                    "resultado_actualizado_at",
+                    "acierto_ganador",
+                    "acierto_spread",
+                    "acierto_total",
+                    "error_margen",
+                    "error_total",
+                ):
+                    record.pop(field, None)
+            record["retrospective"] = True
+            record["prediction_timing"] = "after_kickoff"
+            record["retrospective_generated_at"] = now
+            result = db.weekly_picks.update_one(
+                query, {"$setOnInsert": record}, upsert=True
+            )
+            if result.upserted_id is not None:
+                summary["historical_inserted"] += 1
+                if not completed:
+                    summary["historical_pending_result"] += 1
+            else:
+                summary["skipped"] += 1
+            continue
+
         if prediction_mode == "official":
             if official:
                 # Preserve the official forecast while refreshing independently sourced market lines.
@@ -441,6 +495,7 @@ def sync_final_score(league: str, season: int, week: int, home_team: str,
     })
     if not result:
         return False
+    result["game_completed"] = True
     result.update(_projected_model_lines(official))
         
     db.weekly_picks.update_one(query, {"$set": result})

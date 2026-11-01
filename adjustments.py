@@ -221,7 +221,8 @@ def _weather_total_adjustment(home_team: str, game_date):
 
 def apply_extra_adjustments(league: str, season: int, week: int, home: str, away: str,
                              game_row: pd.Series, schedule: pd.DataFrame, date_col: str,
-                             home_score: float, away_score: float):
+                             home_score: float, away_score: float,
+                             historical: bool = False):
     """
     Aplica, en orden:
       1. Lesiones (QB + línea ofensiva)
@@ -229,13 +230,16 @@ def apply_extra_adjustments(league: str, season: int, week: int, home: str, away
       3. TOPE a los ajustes acumulados
       4. Rivalidad
       5. Clima
+
+    En modo histórico se omiten lesiones y clima, cuyas fuentes no garantizan
+    una captura disponible antes del kickoff.
     """
     notes = []
     base_home = home_score
     base_away = away_score
 
     # --- 1. Lesiones ---
-    if league == "nfl":
+    if league == "nfl" and not historical:
         pen_home, note_home = _qb_injury_penalty(season, home, week, schedule)
         pen_away, note_away = _qb_injury_penalty(season, away, week, schedule)
         home_score += pen_home
@@ -295,7 +299,7 @@ def apply_extra_adjustments(league: str, season: int, week: int, home: str, away
         notes.append("partido de rivalidad (margen reducido)")
 
     # --- 5. Clima ---
-    if league == "nfl":
+    if league == "nfl" and not historical:
         adj, note = _weather_total_adjustment(home, game_date)
         if adj != 0.0:
             home_score += adj / 2
