@@ -9,9 +9,16 @@ completo de la escuela (ej. "Ohio State", "Georgia", "Alabama"), no siglas.
 """
 import cfbd
 import pandas as pd
+import requests
 
 import config
 import team_stats
+
+
+ESPN_SCOREBOARD_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/football/"
+    "college-football/scoreboard"
+)
 
 
 def _games_api():
@@ -35,6 +42,99 @@ def _games_api():
             
     api_client = cfbd.ApiClient(configuration)
     return cfbd.GamesApi(api_client)
+
+
+def _espn_score_value(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_espn_games(payload, requested_week=None):
+    rows = []
+    for event in payload.get("events", []):
+        competitions = event.get("competitions") or []
+        if not competitions:
+            continue
+        competition = competitions[0]
+        competitors = competition.get("competitors") or []
+        home = next(
+            (item for item in competitors if item.get("homeAway") == "home"),
+            None,
+        )
+        away = next(
+            (item for item in competitors if item.get("homeAway") == "away"),
+            None,
+        )
+        if home is None or away is None:
+            continue
+
+        week_info = event.get("week") or {}
+        game_week = week_info.get("number", requested_week)
+        if game_week is None:
+            continue
+
+        home_team = home.get("team") or {}
+        away_team = away.get("team") or {}
+        home_name = home_team.get("location") or home_team.get("displayName")
+        away_name = away_team.get("location") or away_team.get("displayName")
+        if not home_name or not away_name:
+            continue
+
+        status = (competition.get("status") or {}).get("type") or {}
+        completed = bool(status.get("completed"))
+        rows.append({
+            "week": int(game_week),
+            "home_team": home_name,
+            "away_team": away_name,
+            "home_score": _espn_score_value(home.get("score")) if completed else None,
+            "away_score": _espn_score_value(away.get("score")) if completed else None,
+            "start_date": competition.get("date") or event.get("date"),
+            "completed": completed,
+            "conference_game": bool(competition.get("conferenceCompetition")),
+        })
+
+    return rows
+
+
+def _fetch_espn_schedule(season: int, week: int = None) -> pd.DataFrame:
+    """Fetch FBS games and results from ESPN's public scoreboard as a CFBD fallback."""
+    weeks = [int(week)] if week is not None else range(1, 16)
+    rows = []
+    for requested_week in weeks:
+        response = requests.get(
+            ESPN_SCOREBOARD_URL,
+            params={
+                "year": int(season),
+                "seasontype": 2,
+                "week": requested_week,
+                "groups": 80,
+                "limit": 500,
+            },
+            headers={"User-Agent": "nfl-predictor/1.0"},
+            timeout=(5, 20),
+        )
+        response.raise_for_status()
+        rows.extend(_parse_espn_games(response.json(), requested_week))
+
+    frame = pd.DataFrame(rows)
+    if not frame.empty:
+        frame = frame.drop_duplicates(
+            subset=["week", "home_team", "away_team"], keep="last"
+        )
+        frame["week"] = pd.to_numeric(
+            frame["week"], errors="coerce"
+        ).astype("Int64")
+    return frame
+
+
+def _error_summary(error):
+    status = getattr(error, "status", None)
+    if status is None and isinstance(error, requests.HTTPError):
+        status = getattr(error.response, "status_code", None)
+    suffix = f" (HTTP {status})" if status else ""
+    return f"{type(error).__name__}{suffix}"
 
 
 def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.DataFrame:
@@ -79,10 +179,48 @@ _SCHEDULE_CACHE = {}
 
 
 def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.DataFrame:
-    """Igual que _fetch_schedule pero con caché: cada consulta a CFBD se hace una sola vez por corrida."""
+    """Fetch CFBD first, falling back to ESPN for FBS schedules and results."""
     key = (season, week, division)
     if key not in _SCHEDULE_CACHE:
-        _SCHEDULE_CACHE[key] = _fetch_schedule(season, week, division)
+        cfbd_error = None
+        try:
+            schedule = _fetch_schedule(season, week, division)
+        except Exception as error:
+            cfbd_error = error
+            schedule = pd.DataFrame()
+
+        if schedule.empty and division == "fbs":
+            detail = (
+                f"CFBD no disponible ({_error_summary(cfbd_error)}); "
+                if cfbd_error else "CFBD no devolvió partidos; "
+            )
+            try:
+                schedule = _fetch_espn_schedule(season, week)
+            except requests.RequestException as error:
+                raise RuntimeError(
+                    f"{detail}tampoco se pudo consultar el calendario FBS de ESPN "
+                    f"({_error_summary(error)})."
+                ) from error
+            if not schedule.empty:
+                print(
+                    f"[Aviso] {detail}se usó el calendario FBS de ESPN "
+                    f"para {season}"
+                    f"{f', semana {week}' if week is not None else ''}."
+                )
+            else:
+                print(
+                    f"[Aviso] {detail}ESPN tampoco devolvió partidos "
+                    f"para {season}"
+                    f"{f', semana {week}' if week is not None else ''}."
+                )
+        elif schedule.empty and cfbd_error is not None:
+            raise RuntimeError(
+                f"No se pudo consultar el calendario {division} de CFBD "
+                f"({_error_summary(cfbd_error)}); no hay proveedor alternativo "
+                f"configurado para esa división."
+            ) from cfbd_error
+
+        _SCHEDULE_CACHE[key] = schedule
     return _SCHEDULE_CACHE[key].copy()
 
 
