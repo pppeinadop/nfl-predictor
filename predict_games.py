@@ -697,6 +697,15 @@ def update_elo_with_results(season: int, week: int, league: str = "nfl"):
         except Exception as e:
             print(f"[Aviso] No se pudo usar la temporada anterior como base del Elo: {e}")
 
+    if league == "ncaaf":
+        schedule = stats.get_schedule(season)
+        if schedule is not None and not schedule.empty:
+            teams = set(schedule["home_team"].dropna()) | set(
+                schedule["away_team"].dropna()
+            )
+            for team in teams:
+                ratings.setdefault(team, config.ELO_INITIAL)
+
     games = stats.get_completed_games(season, before_week=week).sort_values("week")
     if games.empty and ratings:
         elo_model.save_ratings(ratings, league=league, season=season, week=max(week - 1, 0))
