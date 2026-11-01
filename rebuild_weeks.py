@@ -119,8 +119,12 @@ def rebuild_week(season: int, week: int, league: str,
         )
 
         if picks.empty:
-            print(f"  Sin partidos para la semana {week}.")
-            return True
+            print(
+                f"  No se generó la semana {week}: el calendario de "
+                f"{league.upper()} {season} no devolvió partidos. "
+                "Verifica la temporada y la numeración de semanas del proveedor."
+            )
+            return False
 
         save_summary = db.save_weekly_picks(
             picks, season, week, league, prediction_mode=prediction_mode
