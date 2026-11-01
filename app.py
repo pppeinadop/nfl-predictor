@@ -1541,6 +1541,11 @@ def _run_generation(season, league, from_week, to_week,
     return ok, fail
 
 
+def _set_generation_week(week: int):
+    st.session_state["gen_from_week"] = week
+    st.session_state["gen_to_week"] = week
+
+
 def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
     away_team, home_team = r["partido"].split(" @ ")
     home_rec = _resolve_record(r, "home", season, week, league, records_fallback)
@@ -2100,24 +2105,30 @@ with tab_gen:
         "Cambia ahí si quieres generar para NFL o NCAAF."
     )
 
+    st.session_state.setdefault("gen_from_week", 1)
+    st.session_state.setdefault(
+        "gen_to_week", max(1, int(st.session_state["gen_from_week"]))
+    )
     col_a, col_b, col_btn = st.columns([1, 1, 1.3])
     with col_a:
         from_week = st.number_input(
             "Desde semana", min_value=1, max_value=25,
-            value=1, step=1, key="gen_from_week",
+            step=1, key="gen_from_week",
         )
     with col_b:
         to_week = st.number_input(
             "Hasta semana", min_value=1, max_value=25,
-            value=max(1, int(from_week)), step=1, key="gen_to_week",
+            step=1, key="gen_to_week",
         )
     with col_btn:
         st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
         if week is not None:
-            if st.button(f"📌 Usar semana actual ({week})", use_container_width=True):
-                st.session_state["gen_from_week"] = int(week)
-                st.session_state["gen_to_week"] = int(week)
-                st.rerun()
+            st.button(
+                f"📌 Usar semana actual ({week})",
+                use_container_width=True,
+                on_click=_set_generation_week,
+                args=(int(week),),
+            )
         else:
             st.button("📌 Usar semana actual", disabled=True, use_container_width=True)
 
