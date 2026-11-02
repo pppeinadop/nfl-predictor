@@ -1541,6 +1541,74 @@ def _run_generation(season, league, from_week, to_week,
     return ok, fail
 
 
+def _preview_generation_week(season, week, league, prediction_mode):
+    stats = predict_games._stats_module(league)
+    games = stats.get_week_games(season, week)
+    saved = db.get_weekly_picks(season, week, league)
+    saved_games = set()
+    if not saved.empty:
+        saved_games = set(zip(saved["home_team"], saved["away_team"]))
+
+    now = pd.Timestamp.now(tz="UTC")
+    rows = []
+    for _, game in games.iterrows():
+        home, away = game["home_team"], game["away_team"]
+        kickoff = predict_games._kickoff_utc(game, league)
+        kickoff_at = pd.to_datetime(kickoff, utc=True, errors="coerce")
+        exists = (home, away) in saved_games
+        home_score, away_score = game.get("home_score"), game.get("away_score")
+        has_score = pd.notna(home_score) and pd.notna(away_score)
+        completed_value = game.get("completed")
+        completed = (
+            bool(completed_value)
+            if completed_value is not None and not pd.isna(completed_value)
+            else bool(has_score)
+        )
+
+        if prediction_mode == "official":
+            if exists:
+                status = "Ya existe; se conserva el pronóstico oficial"
+            elif pd.isna(kickoff_at):
+                status = "Kickoff no disponible; no se insertará"
+            elif kickoff_at <= now:
+                status = "Kickoff iniciado; bloqueado en modo oficial"
+            else:
+                status = "Listo para pronóstico oficial"
+        elif prediction_mode == "update":
+            if not exists:
+                status = "No hay pronóstico oficial para versionar"
+            elif pd.isna(kickoff_at) or kickoff_at <= now:
+                status = "Kickoff iniciado o desconocido; actualización bloqueada"
+            else:
+                status = "Listo para guardar una versión pregame"
+        elif exists:
+            status = "Ya existe; protegido, no se reemplazará"
+        elif pd.isna(kickoff_at):
+            status = "Kickoff no disponible; backfill bloqueado"
+        elif kickoff_at > now:
+            status = "Aún no inicia; fuera de la reconstrucción histórica"
+        elif completed and has_score:
+            status = "Listo; resultado final disponible para evaluación"
+        elif completed:
+            status = "Marcado final sin marcador; no se insertará"
+        else:
+            status = "Listo; se guardará sin marcador parcial"
+
+        rows.append({
+            "Partido": f"{away} @ {home}",
+            "Kickoff UTC": (
+                kickoff_at.strftime("%Y-%m-%d %H:%M")
+                if pd.notna(kickoff_at) else "No disponible"
+            ),
+            "Estado": status,
+        })
+
+    market = db.get_market_cache(season, week, league)
+    return pd.DataFrame(rows), rebuild_weeks._has_market_lines(market), market.attrs.get(
+        "cache_updated_at"
+    )
+
+
 def _set_generation_week(week: int):
     st.session_state["gen_from_week"] = week
     st.session_state["gen_to_week"] = week
@@ -1917,8 +1985,16 @@ else:
 
 
 # ---------- Tabs ----------
-tab_picks, tab_props, tab_gen, tab_calib, tab_report, tab_console = st.tabs(
-    ["🏟️ Partidos", "⭐ Props de jugadores", "🔧 Generar", "📐 Calibración", "📊 Reporte", "🖥️ Salida de consola"]
+tab_picks, tab_props, tab_gen, tab_new_gen, tab_calib, tab_report, tab_console = st.tabs(
+    [
+        "🏟️ Partidos",
+        "⭐ Props de jugadores",
+        "🔧 Generar",
+        "🧪 Generar nuevo",
+        "📐 Calibración",
+        "📊 Reporte",
+        "🖥️ Salida de consola",
+    ]
 )
 
 
@@ -2289,6 +2365,206 @@ with tab_gen:
         if st.button("🔄 Recargar datos"):
             st.session_state.pop("_week_context", None)
             st.rerun()
+
+
+# --- TAB: Generador nuevo (flujo de prueba por etapas) ---
+with tab_new_gen:
+    st.subheader("Generar nuevo · prueba paso a paso")
+    st.caption(
+        "Este apartado es independiente de **🔧 Generar**. Trabaja una sola semana "
+        "y no cambia ni elimina el generador anterior."
+    )
+    st.markdown(
+        "**1. Revisa** el calendario y los registros guardados. "
+        "**2. Genera** solo después de comprobar el resumen. "
+        "**3. Sincroniza** resultados finales por separado."
+    )
+    last_new_run = st.session_state.get("new_gen_last_run")
+    if last_new_run:
+        run_state = "completada" if last_new_run["success"] else "con errores"
+        st.caption(
+            f"Última ejecución: semana {last_new_run['week']} · "
+            f"{last_new_run['mode']} · {run_state}."
+        )
+
+    st.session_state.setdefault(
+        "new_gen_week", int(week) if week is not None else 1
+    )
+    new_week = st.number_input(
+        "Semana para probar",
+        min_value=1,
+        max_value=25,
+        step=1,
+        key="new_gen_week",
+    )
+    new_mode_label = st.radio(
+        "Tipo de predicción",
+        options=[
+            "Oficial (crear una sola vez)",
+            "Actualizar antes del partido (guardar versión)",
+            "Reconstrucción histórica (después del kickoff)",
+        ],
+        key="new_gen_mode",
+        help=(
+            "La reconstrucción solo agrega partidos que ya iniciaron y no tienen "
+            "registro; no reemplaza picks existentes."
+        ),
+    )
+    new_prediction_mode = (
+        "update" if new_mode_label.startswith("Actualizar")
+        else "historical" if new_mode_label.startswith("Reconstrucción")
+        else "official"
+    )
+    if new_prediction_mode == "historical":
+        st.info(
+            "Modo retrospectivo: no usa cuotas actuales; solo acepta caché anterior "
+            "al kickoff y no guarda marcadores parciales."
+        )
+        new_skip_odds = True
+        new_refresh_odds = False
+    else:
+        new_skip_odds = st.checkbox(
+            "No consultar cuotas; usar solo caché",
+            value=True,
+            key="new_gen_skip_odds",
+            help=(
+                "Desmárcalo solo si quieres permitir una consulta a The Odds API "
+                "cuando no haya caché; puede consumir cuota."
+            ),
+        )
+        new_refresh_odds = False
+
+    new_review_token = (
+        league_choice,
+        int(season),
+        int(new_week),
+        new_prediction_mode,
+        bool(new_skip_odds),
+    )
+    review_clicked = st.button(
+        "1. Revisar semana (solo lectura)",
+        key="new_gen_review_button",
+        use_container_width=True,
+    )
+    if review_clicked:
+        st.session_state["new_gen_preview"] = None
+        try:
+            with st.spinner("Revisando calendario y picks existentes..."):
+                preview_df, has_cached_market, market_updated_at = (
+                    _preview_generation_week(
+                        int(season), int(new_week), league_choice,
+                        new_prediction_mode,
+                    )
+                )
+            st.session_state["new_gen_preview_token"] = new_review_token
+            st.session_state["new_gen_preview"] = preview_df
+            st.session_state["new_gen_market_available"] = has_cached_market
+            st.session_state["new_gen_market_updated_at"] = market_updated_at
+        except Exception as exc:
+            st.error(f"No se pudo revisar la semana: {exc}")
+
+    preview_is_current = (
+        st.session_state.get("new_gen_preview_token") == new_review_token
+        and st.session_state.get("new_gen_preview") is not None
+    )
+    if preview_is_current:
+        preview_df = st.session_state["new_gen_preview"]
+        st.markdown("#### Resumen de la revisión")
+        if preview_df.empty:
+            st.warning("El calendario no devolvió partidos para esta semana.")
+        else:
+            st.dataframe(preview_df, use_container_width=True, hide_index=True)
+            st.caption(
+                f"{len(preview_df)} partidos en el calendario · "
+                f"{int(preview_df['Estado'].str.startswith('Listo').sum())} "
+                "marcados como listos para este modo."
+            )
+        if st.session_state.get("new_gen_market_available"):
+            st.caption(
+                "Hay líneas en la caché de mercado. Actualizada: "
+                f"{fmt(st.session_state.get('new_gen_market_updated_at'))}."
+            )
+        else:
+            st.caption(
+                "No hay líneas utilizables en caché; el pronóstico puede generarse "
+                "sin mercado."
+            )
+        st.caption(
+            "La revisión no genera proyecciones ni escribe en MongoDB. "
+            "La generación se ejecuta únicamente con el botón siguiente."
+        )
+
+        generate_new_clicked = st.button(
+            f"2. Generar semana {int(new_week)}",
+            key="new_gen_execute_button",
+            type="primary",
+            disabled=preview_df.empty,
+            use_container_width=True,
+        )
+        if generate_new_clicked:
+            st.session_state["new_gen_preview_token"] = None
+            progress_placeholder = st.empty()
+            log_placeholder = st.empty()
+            with st.spinner("Generando la semana seleccionada..."):
+                generated, failed = _run_generation(
+                    int(season),
+                    league_choice,
+                    int(new_week),
+                    int(new_week),
+                    skip_odds=new_skip_odds,
+                    refresh_odds=new_refresh_odds,
+                    verbose=True,
+                    prediction_mode=new_prediction_mode,
+                    log_placeholder=log_placeholder,
+                    progress_placeholder=progress_placeholder,
+                )
+            if generated:
+                st.success(
+                    f"Semana {int(new_week)} procesada. Revisa el resumen de guardado "
+                    "en la salida anterior."
+                )
+            if failed:
+                st.error(f"No se pudo completar la semana {int(new_week)}.")
+            st.session_state["new_gen_last_run"] = {
+                "week": int(new_week),
+                "mode": new_prediction_mode,
+                "success": bool(generated) and not bool(failed),
+                "league": league_choice,
+                "season": int(season),
+            }
+            last_new_run = st.session_state["new_gen_last_run"]
+            st.info(
+                "Para volver a ejecutar, revisa la semana otra vez. Los modos oficial "
+                "e histórico protegen registros existentes; las actualizaciones crean "
+                "una nueva versión por cada ejecución aceptada."
+            )
+
+    can_sync_new_results = bool(
+        last_new_run
+        and last_new_run["success"]
+        and last_new_run["league"] == league_choice
+        and last_new_run["season"] == int(season)
+        and last_new_run["week"] == int(new_week)
+    )
+    sync_new_results = st.button(
+        f"3. Sincronizar resultados finales de semana {int(new_week)}",
+        key="new_gen_sync_button",
+        disabled=not can_sync_new_results,
+        help=(
+            "Actualiza únicamente resultados finales; no vuelve a calcular "
+            "proyecciones. Primero completa el paso 2 para esta semana."
+        ),
+        use_container_width=True,
+    )
+    if sync_new_results:
+        with st.spinner("Consultando resultados finales..."):
+            sync_summary = rebuild_weeks.sync_final_results(
+                int(season), int(new_week), league_choice
+            )
+        st.success(
+            f"Resultados actualizados: {sync_summary['updated']} partidos. "
+            f"Sin predicción coincidente: {sync_summary['not_found']}."
+        )
 
 
 # --- TAB: Calibración ---
