@@ -2494,50 +2494,60 @@ with tab_new_gen:
             "La generación se ejecuta únicamente con el botón siguiente."
         )
 
-        generate_new_clicked = st.button(
-            f"2. Generar semana {int(new_week)}",
-            key="new_gen_execute_button",
-            type="primary",
-            disabled=preview_df.empty,
-            use_container_width=True,
-        )
-        if generate_new_clicked:
-            st.session_state["new_gen_preview_token"] = None
-            progress_placeholder = st.empty()
-            log_placeholder = st.empty()
-            with st.spinner("Generando la semana seleccionada..."):
-                generated, failed = _run_generation(
-                    int(season),
-                    league_choice,
-                    int(new_week),
-                    int(new_week),
-                    skip_odds=new_skip_odds,
-                    refresh_odds=new_refresh_odds,
-                    verbose=True,
-                    prediction_mode=new_prediction_mode,
-                    log_placeholder=log_placeholder,
-                    progress_placeholder=progress_placeholder,
-                )
-            if generated:
-                st.success(
-                    f"Semana {int(new_week)} procesada. Revisa el resumen de guardado "
-                    "en la salida anterior."
-                )
-            if failed:
-                st.error(f"No se pudo completar la semana {int(new_week)}.")
-            st.session_state["new_gen_last_run"] = {
-                "week": int(new_week),
-                "mode": new_prediction_mode,
-                "success": bool(generated) and not bool(failed),
-                "league": league_choice,
-                "season": int(season),
-            }
-            last_new_run = st.session_state["new_gen_last_run"]
-            st.info(
-                "Para volver a ejecutar, revisa la semana otra vez. Los modos oficial "
-                "e histórico protegen registros existentes; las actualizaciones crean "
-                "una nueva versión por cada ejecución aceptada."
+    can_generate_new = bool(
+        preview_is_current
+        and not st.session_state["new_gen_preview"].empty
+    )
+    generate_new_clicked = st.button(
+        f"2. Generar semana {int(new_week)}",
+        key="new_gen_execute_button",
+        type="primary",
+        disabled=not can_generate_new,
+        help=(
+            "Primero pulsa «1. Revisar semana» y confirma que el calendario "
+            "muestre partidos."
+            if not can_generate_new
+            else "Genera únicamente esta semana con el modo seleccionado."
+        ),
+        use_container_width=True,
+    )
+    if generate_new_clicked:
+        st.session_state["new_gen_preview_token"] = None
+        progress_placeholder = st.empty()
+        log_placeholder = st.empty()
+        with st.spinner("Generando la semana seleccionada..."):
+            generated, failed = _run_generation(
+                int(season),
+                league_choice,
+                int(new_week),
+                int(new_week),
+                skip_odds=new_skip_odds,
+                refresh_odds=new_refresh_odds,
+                verbose=True,
+                prediction_mode=new_prediction_mode,
+                log_placeholder=log_placeholder,
+                progress_placeholder=progress_placeholder,
             )
+        if generated:
+            st.success(
+                f"Semana {int(new_week)} procesada. Revisa el resumen de guardado "
+                "en la salida anterior."
+            )
+        if failed:
+            st.error(f"No se pudo completar la semana {int(new_week)}.")
+        st.session_state["new_gen_last_run"] = {
+            "week": int(new_week),
+            "mode": new_prediction_mode,
+            "success": bool(generated) and not bool(failed),
+            "league": league_choice,
+            "season": int(season),
+        }
+        last_new_run = st.session_state["new_gen_last_run"]
+        st.info(
+            "Para volver a ejecutar, revisa la semana otra vez. Los modos oficial "
+            "e histórico protegen registros existentes; las actualizaciones crean "
+            "una nueva versión por cada ejecución aceptada."
+        )
 
     can_sync_new_results = bool(
         last_new_run
@@ -2552,7 +2562,8 @@ with tab_new_gen:
         disabled=not can_sync_new_results,
         help=(
             "Actualiza únicamente resultados finales; no vuelve a calcular "
-            "proyecciones. Primero completa el paso 2 para esta semana."
+            "proyecciones. Se habilita cuando termina correctamente el paso 2 "
+            "para esta semana."
         ),
         use_container_width=True,
     )
