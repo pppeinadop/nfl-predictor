@@ -2423,16 +2423,22 @@ with tab_new_gen:
         new_skip_odds = True
         new_refresh_odds = False
     else:
-        new_skip_odds = st.checkbox(
-            "No consultar cuotas; usar solo caché",
+        fetch_missing_market = st.checkbox(
+            "Obtener también líneas de mercado automáticamente",
             value=True,
-            key="new_gen_skip_odds",
+            key="new_gen_fetch_missing_market",
             help=(
-                "Desmárcalo solo si quieres permitir una consulta a The Odds API "
-                "cuando no haya caché; puede consumir cuota."
+                "Usa primero las líneas guardadas. Si no hay caché utilizable, "
+                "consulta The Odds API; puede consumir cuota."
             ),
         )
+        new_skip_odds = not fetch_missing_market
         new_refresh_odds = False
+        if fetch_missing_market:
+            st.caption(
+                "Se usará la caché si existe; si faltan líneas, se consultará "
+                "The Odds API (máximo una llamada para esta semana)."
+            )
 
     new_review_token = (
         league_choice,
@@ -2485,10 +2491,21 @@ with tab_new_gen:
                 f"{fmt(st.session_state.get('new_gen_market_updated_at'))}."
             )
         else:
-            st.caption(
-                "No hay líneas utilizables en caché; el pronóstico puede generarse "
-                "sin mercado."
-            )
+            if new_prediction_mode == "historical":
+                st.caption(
+                    "No hay líneas utilizables en caché; esta reconstrucción "
+                    "histórica continuará solo con el modelo."
+                )
+            elif new_skip_odds:
+                st.caption(
+                    "No hay líneas utilizables en caché; se generará solo "
+                    "el pronóstico del modelo."
+                )
+            else:
+                st.caption(
+                    "No hay líneas utilizables en caché; al generar se consultará "
+                    "The Odds API para intentar obtenerlas."
+                )
         st.caption(
             "La revisión no genera proyecciones ni escribe en MongoDB. "
             "La generación se ejecuta únicamente con el botón siguiente."
