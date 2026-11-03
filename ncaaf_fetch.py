@@ -23,26 +23,17 @@ ESPN_SCOREBOARD_URL = (
 
 def _games_api():
     configuration = cfbd.Configuration()
-    
-    # Asegurar el formato correcto con el prefijo "Bearer " requerido por CFBD
     api_key = str(config.CFBD_API_KEY).strip()
-    if not api_key.startswith("Bearer "):
-        full_token = f"Bearer {api_key}"
-    else:
-        full_token = api_key
+    token = api_key[7:].strip() if api_key.lower().startswith("bearer ") else api_key
+    if not token or token == "TU_API_KEY_AQUI":
+        raise ValueError(
+            "CFBD_API_KEY no esta configurada. Agregala a los secretos "
+            "de la aplicacion para consultar datos NCAAF."
+        )
 
-    try:
-        configuration.api_key['Authorization'] = full_token
-    except Exception:
-        try:
-            configuration.access_token = full_token
-        except Exception:
-            configuration.api_key['api_key'] = api_key
-            configuration.api_key_prefix['api_key'] = 'Bearer'
-            
-    api_client = cfbd.ApiClient(configuration)
-    return cfbd.GamesApi(api_client)
-
+    configuration.api_key["Authorization"] = token
+    configuration.api_key_prefix["Authorization"] = "Bearer"
+    return cfbd.GamesApi(cfbd.ApiClient(configuration))
 
 def _espn_score_value(value):
     try:
@@ -183,6 +174,7 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
     key = (season, week, division)
     if key not in _SCHEDULE_CACHE:
         cfbd_error = None
+        provider = "CFBD"
         try:
             schedule = _fetch_schedule(season, week, division)
         except Exception as error:
@@ -190,6 +182,7 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
             schedule = pd.DataFrame()
 
         if schedule.empty and division == "fbs":
+            provider = "ESPN"
             detail = (
                 f"CFBD no disponible ({_error_summary(cfbd_error)}); "
                 if cfbd_error else "CFBD no devolvió partidos; "
@@ -220,6 +213,10 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
                 f"configurado para esa división."
             ) from cfbd_error
 
+        schedule.attrs["provider"] = provider
+        schedule.attrs["provider_fallback_reason"] = (
+            _error_summary(cfbd_error) if provider == "ESPN" and cfbd_error else None
+        )
         _SCHEDULE_CACHE[key] = schedule
     return _SCHEDULE_CACHE[key].copy()
 
@@ -263,6 +260,7 @@ def get_week_games(season: int, week: int) -> pd.DataFrame:
         season_schedule["week"], errors="coerce"
     )
     games = season_schedule[season_schedule["week"] == week].copy()
+    games.attrs.update(season_schedule.attrs)
     if not games.empty:
         print(
             f"[Aviso] CFBD no encontró la semana {week} con filtro directo; "
