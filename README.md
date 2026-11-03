@@ -89,7 +89,7 @@ Actualizar cuotas de manera explícita (consume cuota de The Odds API):
 python main.py --season 2026 --week 6 --league nfl --refresh-odds
 ```
 
-En la interfaz web, selecciona la liga, temporada y semana. La pestaña **🏈 Flujo NCAAF** permite revisar por separado el proveedor del calendario, los resultados previos, ratings Elo, líneas cacheadas y documentos ya guardados antes de ejecutar una semana; después vuelve a leer MongoDB para verificar el guardado. Para el flujo general, elige predicción oficial, actualización prepartido o reconstrucción histórica. En modo histórico solo se agregan partidos que ya iniciaron y no tienen pronóstico; las cuotas se consultan exclusivamente desde una caché anterior al kickoff.
+En la interfaz web hay cuatro pestañas: **Partidos**, **Props de jugadores**, **Generar NFL** y **Generar NCAAF**. Los generadores tienen controles independientes de temporada y semana. NFL revisa primero el calendario y los registros guardados; NCAAF además muestra el proveedor, resultados previos, ratings, caché de mercado y vuelve a leer MongoDB tras la generación. Ambos ofrecen predicción oficial, actualización prepartido o reconstrucción histórica; esta última usa solo cuotas cacheadas antes del kickoff.
 
 ## Publicar sin costo con Streamlit Community Cloud + MongoDB Atlas
 
