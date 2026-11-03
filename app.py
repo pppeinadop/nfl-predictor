@@ -1,6 +1,6 @@
 """
 App Streamlit para visualizar los picks y props guardados en MongoDB.
-También permite generar / regenerar semanas y descargar reportes.
+También permite generar semanas NFL y NCAAF en flujos separados.
 
 Uso:
     streamlit run app.py
@@ -22,8 +22,6 @@ import config
 import db
 import predict_games
 import rebuild_weeks
-import report
-import simulate
 
 
 # ---------- Configuración de página ----------
@@ -236,11 +234,6 @@ st.markdown("""
     color: #475569;
     font-size: 0.95rem;
     margin-top: 4px;
-  }
-  .calib-note {
-    color: #64748b;
-    font-size: 0.9em;
-    margin-bottom: 12px;
   }
   div.stButton > button {
     border-radius: 9px;
@@ -589,7 +582,7 @@ st.markdown("""
   .result-score.miss {
     color: #ff9b94;
   }
-  .result-score.neutral, .record, .calib-note {
+  .result-score.neutral, .record {
     color: var(--ui-muted);
   }
   .ml-line, .ml-line .v, .projection-score {
@@ -1440,69 +1433,6 @@ def _render_team_history(season: int, team: str, league: str):
     )
 
 
-# ---------- Calibración ----------
-def _collect_all_played(league: str, from_season: int, to_season: int) -> pd.DataFrame:
-    frames = []
-    for season in range(from_season, to_season + 1):
-        for w in db.list_available_weeks(season, league):
-            df = db.get_weekly_picks(season, w, league)
-            if not df.empty:
-                frames.append(df)
-    if not frames:
-        return pd.DataFrame()
-    full = pd.concat(frames, ignore_index=True)
-    if "resultado_real" in full.columns:
-        full = full[full["resultado_real"].notna()].reset_index(drop=True)
-    return full
-
-
-def _parse_pct(s):
-    if s is None or pd.isna(s):
-        return None
-    try:
-        return float(str(s).replace("%", "").strip()) / 100.0
-    except (TypeError, ValueError):
-        return None
-
-
-def _calibration_table_ml(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty or "prob_home" not in df.columns or "acierto_ganador" not in df.columns:
-        return pd.DataFrame()
-
-    def fav_prob(row):
-        ph = _parse_pct(row.get("prob_home"))
-        pa = _parse_pct(row.get("prob_away"))
-        if ph is None or pa is None:
-            return None
-        return max(ph, pa)
-
-    df2 = df.copy()
-    df2["_fav_prob"] = df2.apply(fav_prob, axis=1)
-    df2 = df2.dropna(subset=["_fav_prob", "acierto_ganador"])
-
-    bins = [0.5, 0.55, 0.60, 0.65, 0.70, 0.80, 0.90, 1.01]
-    labels = ["50-55%", "55-60%", "60-65%", "65-70%", "70-80%", "80-90%", "90%+"]
-    df2["_bucket"] = pd.cut(df2["_fav_prob"], bins=bins, labels=labels, right=False)
-
-    rows = []
-    for label in labels:
-        sub = df2[df2["_bucket"] == label]
-        if sub.empty:
-            continue
-        n = len(sub)
-        hits = sum(1 for v in sub["acierto_ganador"] if _bool_value(v) is True)
-        pct = 100 * hits / n if n > 0 else 0
-        pred_mean = 100 * sub["_fav_prob"].mean()
-        rows.append({
-            "Bucket": label,
-            "Partidos": n,
-            "Predicho": f"{pred_mean:.1f}%",
-            "Real": f"{pct:.1f}%",
-            "Diferencia": f"{pct - pred_mean:+.1f}",
-        })
-    return pd.DataFrame(rows)
-
-
 # ---------- Generación desde la app ----------
 def _run_generation(season, league, from_week, to_week,
                     skip_odds, refresh_odds, verbose, prediction_mode,
@@ -1713,11 +1643,6 @@ def _preview_ncaaf_flow(season, week, prediction_mode):
         "market_line_count": market_line_count,
         "market_updated_at": market.attrs.get("cache_updated_at"),
     }
-
-
-def _set_generation_week(week: int):
-    st.session_state["gen_from_week"] = week
-    st.session_state["gen_to_week"] = week
 
 
 def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
@@ -2071,7 +1996,7 @@ if available_weeks:
 else:
     st.sidebar.info(
         f"Sin datos para {league_options[league_choice]} {season}. "
-        f"Ve a la pestaña **🔧 Generar** para crear la primera semana."
+        "Usa **Generar NFL** o **Generar NCAAF** para crear la primera semana."
     )
 
 st.sidebar.markdown("---")
@@ -2091,16 +2016,12 @@ else:
 
 
 # ---------- Tabs ----------
-tab_picks, tab_props, tab_gen, tab_new_gen, tab_ncaaf_flow, tab_calib, tab_report, tab_console = st.tabs(
+tab_picks, tab_props, tab_nfl_gen, tab_ncaaf_flow = st.tabs(
     [
         "🏟️ Partidos",
         "⭐ Props de jugadores",
-        "🔧 Generar",
-        "🧪 Generar nuevo",
-        "🏈 Flujo NCAAF",
-        "📐 Calibración",
-        "📊 Reporte",
-        "🖥️ Salida de consola",
+        "🏈 Generar NFL",
+        "🏈 Generar NCAAF",
     ]
 )
 
@@ -2178,7 +2099,8 @@ with tab_picks:
     if week is None:
         st.info(
             f"No hay datos para **{league_label} {season}**. "
-            f"Ve a la pestaña **🔧 Generar** para crear la primera semana."
+            f"Ve a **Generar {'NFL' if league_choice == 'nfl' else 'NCAAF'}** "
+            "para crear la primera semana."
         )
     elif picks_df.empty:
         st.warning("No hay partidos guardados para esta semana (o el filtro los ocultó).")
@@ -2273,7 +2195,10 @@ with tab_picks:
 # --- TAB: Props ---
 with tab_props:
     if week is None:
-        st.info("Primero genera alguna semana desde la pestaña **🔧 Generar**.")
+        st.info(
+            "Primero genera alguna semana desde la pestaña "
+            f"**Generar {'NFL' if league_choice == 'nfl' else 'NCAAF'}**."
+        )
     elif props_df.empty:
         st.info("No hay props guardadas para esta semana.")
     else:
@@ -2297,291 +2222,120 @@ with tab_props:
         )
 
 
-# --- TAB: Generar ---
-with tab_gen:
-    st.subheader("Generar predicciones")
+# --- TAB: Generar NFL ---
+with tab_nfl_gen:
+    st.subheader("NFL · Generar predicciones")
     st.caption(
-        "Las predicciones oficiales se guardan una sola vez. Las actualizaciones prepartido se "
-        "registran como versiones independientes; al iniciar el partido, el sistema las bloquea."
-    )
-    st.caption(
-        "La liga y la temporada se toman de la **barra lateral**. "
-        "Cambia ahí si quieres generar para NFL o NCAAF."
-    )
-
-    st.session_state.setdefault("gen_from_week", 1)
-    st.session_state.setdefault(
-        "gen_to_week", max(1, int(st.session_state["gen_from_week"]))
-    )
-    col_a, col_b, col_btn = st.columns([1, 1, 1.3])
-    with col_a:
-        from_week = st.number_input(
-            "Desde semana", min_value=1, max_value=25,
-            step=1, key="gen_from_week",
-        )
-    with col_b:
-        to_week = st.number_input(
-            "Hasta semana", min_value=1, max_value=25,
-            step=1, key="gen_to_week",
-        )
-    with col_btn:
-        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
-        if week is not None:
-            st.button(
-                f"📌 Usar semana actual ({week})",
-                use_container_width=True,
-                on_click=_set_generation_week,
-                args=(int(week),),
-            )
-        else:
-            st.button("📌 Usar semana actual", disabled=True, use_container_width=True)
-
-    prediction_mode_label = st.radio(
-        "Tipo de predicción",
-        options=[
-            "Oficial (crear una sola vez)",
-            "Actualizar antes del partido (guardar versión)",
-            "Reconstrucción histórica (solo partidos tras kickoff faltantes)",
-        ],
-        horizontal=True,
-        help=(
-            "La oficial no se reemplaza. La actualización crea una versión aparte y solo se acepta "
-            "si el partido todavía no comenzó. La reconstrucción histórica agrega solo partidos "
-            "que ya iniciaron y no tienen pronóstico, sin modificar los registros existentes."
-        ),
-    )
-    if prediction_mode_label.startswith("Actualizar"):
-        prediction_mode = "update"
-    elif prediction_mode_label.startswith("Reconstrucción"):
-        prediction_mode = "historical"
-    else:
-        prediction_mode = "official"
-    historical_mode = prediction_mode == "historical"
-
-    if historical_mode:
-        st.warning(
-            "Modo retrospectivo: solo agrega partidos que ya iniciaron y no tengan pronóstico. "
-            "No reemplaza pronósticos guardados, usa cuotas solo si la caché es anterior "
-            "al kickoff y deja el mercado como no disponible en caso contrario."
-        )
-
-    col_c, col_d, col_e = st.columns(3)
-    with col_c:
-        if historical_mode:
-            st.caption("Reconstrucción histórica: solo caché; sin llamadas de cuotas.")
-            skip_odds = True
-        else:
-            skip_odds = st.checkbox(
-                "Solo usar caché de mercado (sin consultar API)",
-                value=False,
-                help=(
-                    "Activado: solo usa la caché y nunca consulta The Odds API. "
-                    "Desactivado: usa la caché y consulta la API si faltan cuotas."
-                ),
-            )
-    with col_d:
-        if historical_mode:
-            st.caption("Cuotas actuales: desactivadas.")
-            refresh_odds = False
-        else:
-            refresh_odds = st.checkbox(
-                "Refrescar odds", value=False,
-                help="Fuerza llamar a The Odds API aunque ya haya cache (consume cuota).",
-            )
-    with col_e:
-        verbose = st.checkbox("Mostrar detalle", value=False)
-
-    if refresh_odds and not historical_mode:
-        st.info("Se consultará The Odds API. Esta opción prevalece sobre la caché y puede consumir cuota.")
-
-    if to_week < from_week:
-        rango_txt = "(rango inválido)"
-    elif to_week == from_week:
-        rango_txt = f"Semana {int(from_week)}"
-    else:
-        rango_txt = f"Semanas {int(from_week)} a {int(to_week)}"
-
-    st.markdown(
-        f"""
-        <div class="gen-confirm">
-          <div class="label">Se va a generar</div>
-          <div class="value">{league_label} · Temporada {season}</div>
-          <div class="sub">{rango_txt}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    api_calls = 0
-    if not historical_mode and to_week >= from_week and (not skip_odds or refresh_odds):
-        api_calls = (int(to_week) - int(from_week) + 1)
-    if api_calls > 0:
-        st.warning(f"⚠ Se harán hasta **{api_calls} llamada(s)** a The Odds API.")
-    elif to_week >= from_week:
-        st.success("✅ No se llamará a The Odds API (solo caché de Mongo).")
-
-    action_col1, action_col2 = st.columns([1, 1])
-    with action_col1:
-        generate_clicked = st.button(
-            "Generar / actualizar predicciones", type="primary",
-            disabled=(to_week < from_week), use_container_width=True,
-        )
-    with action_col2:
-        sync_results_clicked = st.button(
-            "Sincronizar resultados finales", use_container_width=True,
-            disabled=(to_week < from_week),
-            help="Actualiza solo marcadores y métricas de partidos terminados; no recalcula predicciones.",
-        )
-
-    if sync_results_clicked:
-        with st.spinner("Consultando resultados finales..."):
-            result_summary = {"updated": 0, "not_found": 0}
-            for result_week in range(int(from_week), int(to_week) + 1):
-                week_summary = rebuild_weeks.sync_final_results(
-                    int(season), result_week, league_choice
-                )
-                result_summary["updated"] += week_summary["updated"]
-                result_summary["not_found"] += week_summary["not_found"]
-        st.success(
-            f"Resultados sincronizados: {result_summary['updated']} partidos actualizados. "
-            "Las predicciones oficiales no se modificaron."
-        )
-
-    progress_placeholder = st.empty()
-    log_placeholder = st.empty()
-
-    if generate_clicked:
-        with st.spinner("Generando..."):
-            ok, fail = _run_generation(
-                season, league_choice,
-                int(from_week), int(to_week),
-                skip_odds=skip_odds,
-                refresh_odds=refresh_odds,
-                verbose=verbose,
-                prediction_mode=prediction_mode,
-                log_placeholder=log_placeholder,
-                progress_placeholder=progress_placeholder,
-            )
-
-        st.markdown("### Resultado")
-        if ok:
-            st.success(f"✅ Semanas generadas: {ok}")
-        if fail:
-            st.error(f"❌ Semanas con error: {fail}")
-
-        if st.button("🔄 Recargar datos"):
-            st.session_state.pop("_week_context", None)
-            st.rerun()
-
-
-# --- TAB: Generador nuevo (flujo de prueba por etapas) ---
-with tab_new_gen:
-    st.subheader("Generar nuevo · prueba paso a paso")
-    st.caption(
-        "Este apartado es independiente de **🔧 Generar**. Trabaja una sola semana "
-        "y no cambia ni elimina el generador anterior."
+        "Generación NFL independiente del flujo NCAAF. Revisa una semana antes "
+        "de ejecutar el pipeline."
     )
     st.markdown(
         "**1. Revisa** el calendario y los registros guardados. "
         "**2. Genera** solo después de comprobar el resumen. "
         "**3. Sincroniza** resultados finales por separado."
     )
-    last_new_run = st.session_state.get("new_gen_last_run")
-    if last_new_run:
-        run_state = "completada" if last_new_run["success"] else "con errores"
+    last_nfl_run = st.session_state.get("nfl_gen_last_run")
+    if last_nfl_run:
+        run_state = "completada" if last_nfl_run["success"] else "con errores"
         st.caption(
-            f"Última ejecución: semana {last_new_run['week']} · "
-            f"{last_new_run['mode']} · {run_state}."
+            f"Última ejecución NFL: temporada {last_nfl_run['season']} · "
+            f"semana {last_nfl_run['week']} · {last_nfl_run['mode']} · {run_state}."
         )
 
-    st.session_state.setdefault(
-        "new_gen_week", int(week) if week is not None else 1
-    )
-    new_week = st.number_input(
-        "Semana para probar",
-        min_value=1,
-        max_value=25,
+    st.session_state.setdefault("nfl_gen_season", int(config.CURRENT_SEASON))
+    nfl_gen_season = st.number_input(
+        "Temporada NFL",
+        min_value=2015,
+        max_value=2030,
         step=1,
-        key="new_gen_week",
+        key="nfl_gen_season",
     )
-    new_mode_label = st.radio(
+    st.session_state.setdefault("nfl_gen_week", 1)
+    nfl_gen_week = st.number_input(
+        "Semana NFL",
+        min_value=1,
+        max_value=22,
+        step=1,
+        key="nfl_gen_week",
+    )
+    nfl_mode_label = st.radio(
         "Tipo de predicción",
         options=[
             "Oficial (crear una sola vez)",
             "Actualizar antes del partido (guardar versión)",
             "Reconstrucción histórica (después del kickoff)",
         ],
-        key="new_gen_mode",
+        key="nfl_gen_mode",
         help=(
             "La reconstrucción solo agrega partidos que ya iniciaron y no tienen "
             "registro; no reemplaza picks existentes."
         ),
     )
-    new_prediction_mode = (
-        "update" if new_mode_label.startswith("Actualizar")
-        else "historical" if new_mode_label.startswith("Reconstrucción")
+    nfl_prediction_mode = (
+        "update" if nfl_mode_label.startswith("Actualizar")
+        else "historical" if nfl_mode_label.startswith("Reconstrucción")
         else "official"
     )
-    if new_prediction_mode == "historical":
+    if nfl_prediction_mode == "historical":
         st.info(
             "Modo retrospectivo: no usa cuotas actuales; solo acepta caché anterior "
             "al kickoff y no guarda marcadores parciales."
         )
-        new_skip_odds = True
-        new_refresh_odds = False
+        nfl_skip_odds = True
+        nfl_refresh_odds = False
     else:
         fetch_missing_market = st.checkbox(
             "Obtener también líneas de mercado automáticamente",
             value=True,
-            key="new_gen_fetch_missing_market",
+            key="nfl_gen_fetch_missing_market",
             help=(
                 "Usa primero las líneas guardadas. Si no hay caché utilizable, "
                 "consulta The Odds API; puede consumir cuota."
             ),
         )
-        new_skip_odds = not fetch_missing_market
-        new_refresh_odds = False
+        nfl_skip_odds = not fetch_missing_market
+        nfl_refresh_odds = False
         if fetch_missing_market:
             st.caption(
                 "Se usará la caché si existe; si faltan líneas, se consultará "
                 "The Odds API (máximo una llamada para esta semana)."
             )
 
-    new_review_token = (
-        league_choice,
-        int(season),
-        int(new_week),
-        new_prediction_mode,
-        bool(new_skip_odds),
+    nfl_review_token = (
+        int(nfl_gen_season),
+        int(nfl_gen_week),
+        nfl_prediction_mode,
+        bool(nfl_skip_odds),
     )
-    review_clicked = st.button(
+    nfl_review_clicked = st.button(
         "1. Revisar semana (solo lectura)",
-        key="new_gen_review_button",
+        key="nfl_gen_review_button",
         use_container_width=True,
     )
-    if review_clicked:
-        st.session_state["new_gen_preview"] = None
+    if nfl_review_clicked:
+        st.session_state["nfl_gen_preview"] = None
+        st.session_state["nfl_gen_last_run"] = None
         try:
             with st.spinner("Revisando calendario y picks existentes..."):
                 preview_df, has_cached_market, market_updated_at = (
                     _preview_generation_week(
-                        int(season), int(new_week), league_choice,
-                        new_prediction_mode,
+                        int(nfl_gen_season), int(nfl_gen_week), "nfl",
+                        nfl_prediction_mode,
                     )
                 )
-            st.session_state["new_gen_preview_token"] = new_review_token
-            st.session_state["new_gen_preview"] = preview_df
-            st.session_state["new_gen_market_available"] = has_cached_market
-            st.session_state["new_gen_market_updated_at"] = market_updated_at
+            st.session_state["nfl_gen_preview_token"] = nfl_review_token
+            st.session_state["nfl_gen_preview"] = preview_df
+            st.session_state["nfl_gen_market_available"] = has_cached_market
+            st.session_state["nfl_gen_market_updated_at"] = market_updated_at
         except Exception as exc:
             st.error(f"No se pudo revisar la semana: {exc}")
 
-    preview_is_current = (
-        st.session_state.get("new_gen_preview_token") == new_review_token
-        and st.session_state.get("new_gen_preview") is not None
+    nfl_preview_is_current = (
+        st.session_state.get("nfl_gen_preview_token") == nfl_review_token
+        and st.session_state.get("nfl_gen_preview") is not None
     )
-    if preview_is_current:
-        preview_df = st.session_state["new_gen_preview"]
+    if nfl_preview_is_current:
+        preview_df = st.session_state["nfl_gen_preview"]
         st.markdown("#### Resumen de la revisión")
         if preview_df.empty:
             st.warning("El calendario no devolvió partidos para esta semana.")
@@ -2592,18 +2346,18 @@ with tab_new_gen:
                 f"{int(preview_df['Estado'].str.startswith('Listo').sum())} "
                 "marcados como listos para este modo."
             )
-        if st.session_state.get("new_gen_market_available"):
+        if st.session_state.get("nfl_gen_market_available"):
             st.caption(
                 "Hay líneas en la caché de mercado. Actualizada: "
-                f"{fmt(st.session_state.get('new_gen_market_updated_at'))}."
+                f"{fmt(st.session_state.get('nfl_gen_market_updated_at'))}."
             )
         else:
-            if new_prediction_mode == "historical":
+            if nfl_prediction_mode == "historical":
                 st.caption(
                     "No hay líneas utilizables en caché; esta reconstrucción "
                     "histórica continuará solo con el modelo."
                 )
-            elif new_skip_odds:
+            elif nfl_skip_odds:
                 st.caption(
                     "No hay líneas utilizables en caché; se generará solo "
                     "el pronóstico del modelo."
@@ -2618,83 +2372,82 @@ with tab_new_gen:
             "La generación se ejecuta únicamente con el botón siguiente."
         )
 
-    can_generate_new = bool(
-        preview_is_current
-        and not st.session_state["new_gen_preview"].empty
+    can_generate_nfl = bool(
+        nfl_preview_is_current
+        and not st.session_state["nfl_gen_preview"].empty
     )
-    generate_new_clicked = st.button(
-        f"2. Generar semana {int(new_week)}",
-        key="new_gen_execute_button",
+    generate_nfl_clicked = st.button(
+        f"2. Generar NFL · semana {int(nfl_gen_week)}",
+        key="nfl_gen_execute_button",
         type="primary",
-        disabled=not can_generate_new,
+        disabled=not can_generate_nfl,
         help=(
             "Primero pulsa «1. Revisar semana» y confirma que el calendario "
             "muestre partidos."
-            if not can_generate_new
-            else "Genera únicamente esta semana con el modo seleccionado."
+            if not can_generate_nfl
+            else "Genera únicamente esta semana de NFL con el modo seleccionado."
         ),
         use_container_width=True,
     )
-    if generate_new_clicked:
-        st.session_state["new_gen_preview_token"] = None
+    if generate_nfl_clicked:
+        st.session_state["nfl_gen_preview_token"] = None
         progress_placeholder = st.empty()
         log_placeholder = st.empty()
         with st.spinner("Generando la semana seleccionada..."):
             generated, failed = _run_generation(
-                int(season),
-                league_choice,
-                int(new_week),
-                int(new_week),
-                skip_odds=new_skip_odds,
-                refresh_odds=new_refresh_odds,
+                int(nfl_gen_season),
+                "nfl",
+                int(nfl_gen_week),
+                int(nfl_gen_week),
+                skip_odds=nfl_skip_odds,
+                refresh_odds=nfl_refresh_odds,
                 verbose=True,
-                prediction_mode=new_prediction_mode,
+                prediction_mode=nfl_prediction_mode,
                 log_placeholder=log_placeholder,
                 progress_placeholder=progress_placeholder,
             )
         if generated:
             st.success(
-                f"Semana {int(new_week)} procesada. Revisa el resumen de guardado "
+                f"NFL temporada {int(nfl_gen_season)}, semana {int(nfl_gen_week)} "
+                "procesada. Revisa el resumen de guardado "
                 "en la salida anterior."
             )
         if failed:
-            st.error(f"No se pudo completar la semana {int(new_week)}.")
-        st.session_state["new_gen_last_run"] = {
-            "week": int(new_week),
-            "mode": new_prediction_mode,
+            st.error(f"No se pudo completar la semana NFL {int(nfl_gen_week)}.")
+        st.session_state["nfl_gen_last_run"] = {
+            "week": int(nfl_gen_week),
+            "season": int(nfl_gen_season),
+            "mode": nfl_prediction_mode,
             "success": bool(generated) and not bool(failed),
-            "league": league_choice,
-            "season": int(season),
         }
-        last_new_run = st.session_state["new_gen_last_run"]
         st.info(
             "Para volver a ejecutar, revisa la semana otra vez. Los modos oficial "
             "e histórico protegen registros existentes; las actualizaciones crean "
             "una nueva versión por cada ejecución aceptada."
         )
 
-    can_sync_new_results = bool(
-        last_new_run
-        and last_new_run["success"]
-        and last_new_run["league"] == league_choice
-        and last_new_run["season"] == int(season)
-        and last_new_run["week"] == int(new_week)
+    last_nfl_run = st.session_state.get("nfl_gen_last_run")
+    can_sync_nfl_results = bool(
+        last_nfl_run
+        and last_nfl_run["success"]
+        and last_nfl_run["season"] == int(nfl_gen_season)
+        and last_nfl_run["week"] == int(nfl_gen_week)
     )
-    sync_new_results = st.button(
-        f"3. Sincronizar resultados finales de semana {int(new_week)}",
-        key="new_gen_sync_button",
-        disabled=not can_sync_new_results,
+    sync_nfl_results = st.button(
+        f"3. Sincronizar resultados NFL · semana {int(nfl_gen_week)}",
+        key="nfl_gen_sync_button",
+        disabled=not can_sync_nfl_results,
         help=(
             "Actualiza únicamente resultados finales; no vuelve a calcular "
             "proyecciones. Se habilita cuando termina correctamente el paso 2 "
-            "para esta semana."
+            "para esta temporada y semana NFL."
         ),
         use_container_width=True,
     )
-    if sync_new_results:
+    if sync_nfl_results:
         with st.spinner("Consultando resultados finales..."):
             sync_summary = rebuild_weeks.sync_final_results(
-                int(season), int(new_week), league_choice
+                int(nfl_gen_season), int(nfl_gen_week), "nfl"
             )
         st.success(
             f"Resultados actualizados: {sync_summary['updated']} partidos. "
@@ -2704,10 +2457,10 @@ with tab_new_gen:
 
 # --- TAB: Flujo NCAAF ---
 with tab_ncaaf_flow:
-    st.subheader("NCAAF · Flujo real de datos")
+    st.subheader("NCAAF · Generar paso a paso")
     st.caption(
-        "Esta pantalla sigue el pipeline existente y muestra qué leyó, qué guardó "
-        "y qué volvió a leer de MongoDB. La pestaña Generar original permanece intacta."
+        "Este flujo es independiente del generador NFL. Revisa calendario y registros "
+        "antes de ejecutar; después verifica lo que quedó guardado en MongoDB."
     )
     st.markdown(
         "**Orden:** calendario y resultados (`ncaaf_fetch.py`) → ratings y proyección "
@@ -2728,7 +2481,7 @@ with tab_ncaaf_flow:
     with flow_col_b:
         st.session_state.setdefault(
             "ncaaf_flow_week",
-            int(week) if league_choice == "ncaaf" and week is not None else 1,
+            1,
         )
         flow_week = st.number_input(
             "Semana NCAAF",
@@ -2888,7 +2641,7 @@ with tab_ncaaf_flow:
         and not flow_run_attempted
     )
     run_ncaaf_clicked = st.button(
-        f"2. Ejecutar flujo NCAAF · semana {int(flow_week)}",
+        f"2. Generar NCAAF · semana {int(flow_week)}",
         key="ncaaf_flow_run_button",
         type="primary",
         disabled=not can_run_ncaaf,
@@ -3021,315 +2774,6 @@ with tab_ncaaf_flow:
             st.error(
                 f"Falló la sincronización de resultados: {ncaaf_sync['error']}"
             )
-
-
-# --- TAB: Calibración ---
-with tab_calib:
-    st.subheader("📐 Calibración del modelo")
-    st.markdown(
-        '<div class="calib-note">'
-        'Esta tabla te dice si las probabilidades del modelo son <b>honestas</b>. '
-        'Cuando el modelo dice "70%", ¿realmente acierta el 70% de las veces? '
-        'Si los números de "Predicho" y "Real" son parecidos, las probabilidades '
-        'del modelo son confiables.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    seasons_available_calib = []
-    try:
-        for s in range(2015, 2031):
-            if db.list_available_weeks(s, league_choice):
-                seasons_available_calib.append(s)
-    except Exception:
-        pass
-
-    if not seasons_available_calib:
-        st.warning("No hay datos guardados para calibrar.")
-        st.stop()
-
-    min_s = min(seasons_available_calib)
-    max_s = max(seasons_available_calib)
-
-    col_ca, col_cb = st.columns([1, 1])
-    with col_ca:
-        calib_from = st.number_input(
-            "Desde temporada", min_value=min_s, max_value=max_s,
-            value=min_s, step=1, key="calib_from",
-        )
-    with col_cb:
-        calib_to = st.number_input(
-            "Hasta temporada", min_value=min_s, max_value=max_s,
-            value=max_s, step=1, key="calib_to",
-        )
-
-    st.caption(
-        f"Analizando temporadas **{int(calib_from)}–{int(calib_to)}** "
-        f"para {league_label}."
-    )
-
-    with st.spinner("Recopilando datos históricos..."):
-        calib_df = _collect_all_played(league_choice, int(calib_from), int(calib_to))
-
-    if calib_df.empty:
-        st.warning("No hay partidos jugados en ese rango.")
-    else:
-        st.caption(f"Partidos analizados: **{len(calib_df)}**")
-        st.markdown("---")
-
-        st.markdown("### 🎯 Calibración de probabilidad (ML)")
-        st.caption(
-            "Cuando el modelo asigna X% al favorito, ¿qué % de esos partidos ganó el favorito? "
-            "Si 'Predicho' y 'Real' son parecidos, la probabilidad está bien calibrada."
-        )
-        tbl_ml = _calibration_table_ml(calib_df)
-        if tbl_ml.empty:
-            st.info("Sin datos suficientes.")
-        else:
-            st.dataframe(tbl_ml, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.markdown("**Cómo leer esta tabla:**")
-        st.markdown(
-            "- **Diferencia** cercana a 0 = bien calibrado.\n"
-            "- Si 'Diferencia' es consistentemente positiva, el modelo es "
-            "**conservador** (subestima su propia confianza).\n"
-            "- Si es consistentemente negativa, es **optimista** (sobreestima).\n"
-            "- Buckets con pocos partidos (< 30) pueden tener ruido.\n\n"
-            "**Nota:** las probabilidades de spread y over/under no se muestran aquí "
-            "porque no están calibradas (dan ~50% real en todos los buckets). "
-            "El modelo tiene señal en el ganador (ML), no en quién cubre la línea."
-        )
-
-
-# --- TAB: Reporte ---
-with tab_report:
-    st.subheader("📊 Reporte de desempeño")
-    st.caption(
-        "Resumen del desempeño del modelo. Descarga el reporte y súbelo a una IA "
-        "(ChatGPT, Claude, Gemini) para que lo analice a fondo."
-    )
-
-    seasons_available = []
-    try:
-        for s in range(2015, 2031):
-            if db.list_available_weeks(s, league_choice):
-                seasons_available.append(s)
-    except Exception:
-        pass
-
-    if not seasons_available:
-        st.warning("No hay datos guardados para esta liga. Genera primero desde la pestaña **🔧 Generar**.")
-        st.stop()
-
-    min_season = min(seasons_available)
-    max_season = max(seasons_available)
-
-    col_r1, col_r2, col_r3 = st.columns([1, 1, 1.3])
-    with col_r1:
-        from_season = st.number_input(
-            "Desde temporada",
-            min_value=min_season, max_value=max_season,
-            value=min_season, step=1, key="rep_from_season",
-        )
-    with col_r2:
-        to_season = st.number_input(
-            "Hasta temporada",
-            min_value=min_season, max_value=max_season,
-            value=max_season, step=1, key="rep_to_season",
-        )
-    with col_r3:
-        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
-        if st.button("📚 Usar todo el histórico disponible", use_container_width=True):
-            st.session_state["rep_from_season"] = min_season
-            st.session_state["rep_to_season"] = max_season
-            st.rerun()
-
-    st.caption(
-        f"Temporadas con datos: {seasons_available}. "
-        f"Rango actual: **{int(from_season)}–{int(to_season)}**."
-    )
-
-    col_x, col_y = st.columns([1, 1])
-    with col_x:
-        only_played_report = st.checkbox(
-            "Solo partidos ya jugados", value=True,
-            help="Desactívalo para incluir partidos futuros en el CSV crudo.",
-        )
-    with col_y:
-        report_format = st.selectbox(
-            "Formato de descarga",
-            options=["markdown", "json", "csv"],
-            format_func=lambda x: {
-                "markdown": "Markdown (.md) — ideal para pegar en una IA",
-                "json": "JSON (.json) — estructurado",
-                "csv": "CSV (.csv) — crudo para Excel/pandas",
-            }[x],
-        )
-
-    if st.button("📥 Generar reporte", type="primary"):
-        with st.spinner("Recopilando datos de todas las temporadas..."):
-            full_df = report.collect_range(
-                int(from_season), int(to_season), league_choice,
-                only_played=only_played_report,
-            )
-
-        if full_df.empty:
-            st.warning("No hay partidos para reportar en ese rango.")
-        else:
-            stats = report.compute_stats(full_df)
-            g = stats.get("global") or {}
-
-            st.markdown("### Resumen general")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                acc = g.get("ml")
-                if acc and acc.get("total"):
-                    st.metric("ML", f"{acc['aciertos']}/{acc['total']}", delta=f"{acc['pct']}%")
-                else:
-                    st.metric("ML", "—")
-            with c2:
-                acc = g.get("spread")
-                if acc and acc.get("total"):
-                    st.metric("Spread", f"{acc['aciertos']}/{acc['total']}", delta=f"{acc['pct']}%")
-                else:
-                    st.metric("Spread", "—")
-            with c3:
-                acc = g.get("total")
-                if acc and acc.get("total"):
-                    st.metric("O/U", f"{acc['aciertos']}/{acc['total']}", delta=f"{acc['pct']}%")
-                else:
-                    st.metric("O/U", "—")
-            with c4:
-                st.metric("Partidos", stats["total_partidos"])
-
-            if stats.get("por_temporada"):
-                st.markdown("### Por temporada")
-                rows = []
-                for s in stats["por_temporada"]:
-                    def _fmt(a):
-                        if not a or not a.get("total"):
-                            return "—"
-                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
-                    rows.append({
-                        "Temporada": s["temporada"],
-                        "Partidos": s["partidos"],
-                        "ML": _fmt(s.get("ml")),
-                        "Spread": _fmt(s.get("spread")),
-                        "O/U": _fmt(s.get("total")),
-                        "Err. margen": s.get("error_margen_medio_pts"),
-                        "Err. total": s.get("error_total_medio_pts"),
-                    })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-            if stats.get("por_semana"):
-                st.markdown("### Por semana")
-                rows = []
-                for s in stats["por_semana"]:
-                    def _fmt(a):
-                        if not a or not a.get("total"):
-                            return "—"
-                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
-                    rows.append({
-                        "Semana": s["semana"],
-                        "Partidos": s["partidos"],
-                        "ML": _fmt(s.get("ml")),
-                        "Spread": _fmt(s.get("spread")),
-                        "O/U": _fmt(s.get("total")),
-                        "Err. margen": s.get("error_margen_medio_pts"),
-                        "Err. total": s.get("error_total_medio_pts"),
-                    })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-            st.markdown("### Por rango de favoritismo")
-            if stats.get("por_rango_spread"):
-                rows = []
-                for s in stats["por_rango_spread"]:
-                    def _fmt(a):
-                        if not a or not a.get("total"):
-                            return "—"
-                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
-                    rows.append({
-                        "Rango": s["rango"],
-                        "Partidos": s["partidos"],
-                        "ML": _fmt(s.get("ml")),
-                        "Spread": _fmt(s.get("spread")),
-                    })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-            st.markdown("### Por nivel de confianza del modelo")
-            if stats.get("por_confianza_ml"):
-                rows = []
-                for s in stats["por_confianza_ml"]:
-                    def _fmt(a):
-                        if not a or not a.get("total"):
-                            return "—"
-                        return f"{a['aciertos']}/{a['total']} ({a['pct']}%)"
-                    rows.append({
-                        "Confianza": s["confianza"],
-                        "Partidos": s["partidos"],
-                        "ML": _fmt(s.get("ml")),
-                        "Spread": _fmt(s.get("spread")),
-                    })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-            st.markdown("---")
-            st.markdown("### Descargar reporte")
-
-            label = f"{int(from_season)}" if from_season == to_season else f"{int(from_season)}-{int(to_season)}"
-            base_name = f"reporte_{league_choice}_{label}"
-
-            if report_format == "markdown":
-                md = report.to_markdown(full_df, stats)
-                st.download_button(
-                    "⬇️ Descargar Markdown (.md)",
-                    data=md.encode("utf-8"),
-                    file_name=f"{base_name}.md",
-                    mime="text/markdown",
-                )
-                with st.expander("Vista previa (Markdown)"):
-                    st.markdown(md)
-
-            elif report_format == "json":
-                data = report.to_json_dict(full_df, stats)
-                js = json.dumps(data, ensure_ascii=False, indent=2, default=str)
-                st.download_button(
-                    "⬇️ Descargar JSON (.json)",
-                    data=js.encode("utf-8"),
-                    file_name=f"{base_name}.json",
-                    mime="application/json",
-                )
-                with st.expander("Vista previa (JSON, primeros 3000 caracteres)"):
-                    st.code(js[:3000] + ("\n..." if len(js) > 3000 else ""), language="json")
-
-            else:
-                csv_bytes = full_df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "⬇️ Descargar CSV (.csv)",
-                    data=csv_bytes,
-                    file_name=f"{base_name}.csv",
-                    mime="text/csv",
-                )
-                with st.expander("Vista previa (primeras filas)"):
-                    st.dataframe(full_df.head(20), use_container_width=True, hide_index=True)
-
-
-# --- TAB: Consola ---
-with tab_console:
-    if week is None:
-        st.info("No hay datos para mostrar. Genera alguna semana primero.")
-    else:
-        st.caption("Salida literal de `predict_games.print_picks()`.")
-        if picks_df.empty:
-            st.info("Sin datos.")
-        else:
-            try:
-                f = io.StringIO()
-                with contextlib.redirect_stdout(f):
-                    predict_games.print_picks(picks_df)
-                st.code(f.getvalue(), language="text")
-            except Exception as e:
-                st.error(f"No se pudo generar la salida de consola: {e}")
 
 
 # ---------- Footer ----------
