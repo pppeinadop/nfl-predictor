@@ -89,6 +89,38 @@ def _parse_espn_games(payload, requested_week=None):
     return rows
 
 
+def _valid_team_name(value):
+    if value is None or pd.isna(value):
+        return False
+    return str(value).strip().lower() not in {"", "none", "nan", "null"}
+
+
+def _clean_schedule(frame):
+    if frame.empty:
+        frame.attrs["invalid_game_count"] = 0
+        return frame
+
+    required = {"week", "home_team", "away_team"}
+    if not required.issubset(frame.columns):
+        cleaned = frame.iloc[0:0].copy()
+        cleaned.attrs.update(frame.attrs)
+        cleaned.attrs["invalid_game_count"] = len(frame)
+        return cleaned
+
+    valid_rows = (
+        frame["week"].notna()
+        & frame["home_team"].map(_valid_team_name)
+        & frame["away_team"].map(_valid_team_name)
+    )
+    cleaned = frame.loc[valid_rows].copy()
+    cleaned.attrs.update(frame.attrs)
+    cleaned.attrs["invalid_game_count"] = (
+        int(frame.attrs.get("invalid_game_count", 0))
+        + int((~valid_rows).sum())
+    )
+    return cleaned
+
+
 def _fetch_espn_schedule(season: int, week: int = None) -> pd.DataFrame:
     """Fetch FBS games and results from ESPN's public scoreboard as a CFBD fallback."""
     weeks = [int(week)] if week is not None else range(1, 16)
@@ -117,7 +149,7 @@ def _fetch_espn_schedule(season: int, week: int = None) -> pd.DataFrame:
         frame["week"] = pd.to_numeric(
             frame["week"], errors="coerce"
         ).astype("Int64")
-    return frame
+    return _clean_schedule(frame)
 
 
 def _error_summary(error):
@@ -163,7 +195,7 @@ def _fetch_schedule(season: int, week: int = None, division: str = "fbs") -> pd.
     df = pd.DataFrame(rows)
     if not df.empty and "week" in df.columns:
         df["week"] = pd.to_numeric(df["week"], errors="coerce").fillna(0).astype(int)
-    return df
+    return _clean_schedule(df)
 
 
 _SCHEDULE_CACHE = {}
@@ -175,8 +207,12 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
     if key not in _SCHEDULE_CACHE:
         cfbd_error = None
         provider = "CFBD"
+        invalid_game_count = 0
         try:
             schedule = _fetch_schedule(season, week, division)
+            invalid_game_count += int(
+                schedule.attrs.get("invalid_game_count", 0)
+            )
         except Exception as error:
             cfbd_error = error
             schedule = pd.DataFrame()
@@ -189,6 +225,9 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
             )
             try:
                 schedule = _fetch_espn_schedule(season, week)
+                invalid_game_count += int(
+                    schedule.attrs.get("invalid_game_count", 0)
+                )
             except requests.RequestException as error:
                 raise RuntimeError(
                     f"{detail}tampoco se pudo consultar el calendario FBS de ESPN "
@@ -214,6 +253,7 @@ def get_schedule(season: int, week: int = None, division: str = "fbs") -> pd.Dat
             ) from cfbd_error
 
         schedule.attrs["provider"] = provider
+        schedule.attrs["invalid_game_count"] = invalid_game_count
         schedule.attrs["provider_fallback_reason"] = (
             _error_summary(cfbd_error) if provider == "ESPN" and cfbd_error else None
         )
