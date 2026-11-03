@@ -1704,6 +1704,7 @@ def _preview_ncaaf_flow(season, week, prediction_mode):
         "preview": pd.DataFrame(preview_rows),
         "provider": games.attrs.get("provider", "No informado por el proveedor"),
         "provider_fallback_reason": games.attrs.get("provider_fallback_reason"),
+        "invalid_game_count": int(games.attrs.get("invalid_game_count", 0)),
         "provider_messages": messages.getvalue().strip(),
         "cfbd_key_configured": cfbd_key_configured,
         "prior_result_count": len(prior_results),
@@ -2825,6 +2826,11 @@ with tab_ncaaf_flow:
                 "Se usó ESPN como respaldo. CFBD reportó: "
                 f"{flow_preview['provider_fallback_reason']}."
             )
+        if flow_preview["invalid_game_count"]:
+            st.warning(
+                f"Se descartaron {flow_preview['invalid_game_count']} filas del "
+                "calendario porque faltaban equipos o número de semana."
+            )
         if not flow_preview["cfbd_key_configured"]:
             st.error(
                 "Falta `CFBD_API_KEY`; CFBD no podrá responder. La app intentará "
@@ -2834,7 +2840,8 @@ with tab_ncaaf_flow:
             st.code(flow_preview["provider_messages"], language="text")
         if flow_games.empty:
             st.error(
-                "El proveedor no devolvió partidos para esta semana. "
+                "No hay partidos válidos para esta semana. Revisa el proveedor y "
+                "los datos descartados indicados arriba. "
                 "La generación queda bloqueada y no escribirá en MongoDB."
             )
         else:
