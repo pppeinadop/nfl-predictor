@@ -89,7 +89,7 @@ Actualizar cuotas de manera explícita (consume cuota de The Odds API):
 python main.py --season 2026 --week 6 --league nfl --refresh-odds
 ```
 
-En la interfaz web hay cinco pestañas: **Partidos**, **Props de jugadores**, **Generar NFL**, **Generar NCAAF** y **Eliminar semana**. Los generadores tienen controles independientes de temporada y semana y el mismo flujo: revisar calendario, historial, Elo, mercado y registros guardados; ejecutar la generación; verificar lo que MongoDB devolvió; y sincronizar resultados finales por separado. Ambos ofrecen predicción oficial, actualización prepartido o reconstrucción histórica; esta última usa solo cuotas cacheadas antes del kickoff. **Eliminar semana** muestra los documentos objetivo y requiere escribir una confirmación antes de borrar los pronósticos guardados y sus versiones para una liga/temporada/semana. Las props, cuotas cacheadas y ratings se conservan.
+En la interfaz web hay cinco pestañas: **Partidos**, **Props de jugadores**, **Generar NFL**, **Generar NCAAF** y **Eliminar semana**. Cada generador tiene controles independientes de temporada y semana; al pulsar su botón único, revisa el calendario, ejecuta la generación y sincroniza los resultados finales. Al terminar, muestra un aviso breve y actualiza la selección de semana en la barra lateral. Ambos ofrecen predicción oficial, actualización prepartido o reconstrucción histórica; esta última usa solo cuotas cacheadas antes del kickoff. **Eliminar semana** muestra los documentos objetivo y requiere escribir una confirmación antes de borrar los pronósticos guardados y sus versiones para una liga/temporada/semana. Las props, cuotas cacheadas y ratings se conservan.
 
 ## Publicar sin costo con Streamlit Community Cloud + MongoDB Atlas
 
