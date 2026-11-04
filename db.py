@@ -513,6 +513,52 @@ def get_prediction_versions(season: int, week: int, league: str = "nfl",
     return pd.DataFrame(docs)
 
 
+def list_prediction_weeks(season: int, league: str = "nfl") -> list:
+    """Weeks with official picks or pregame prediction versions."""
+    db = get_db()
+    query = {"league": league, "season": int(season)}
+    weeks = set(db.weekly_picks.distinct("week", query))
+    weeks.update(db.prediction_versions.distinct("week", query))
+    return sorted(int(week) for week in weeks if week is not None)
+
+
+def get_week_prediction_counts(season: int, week: int, league: str = "nfl") -> dict:
+    """Count official picks and versions for one exact league/season/week."""
+    db = get_db()
+    query = {
+        "league": league,
+        "season": int(season),
+        "week": int(week),
+    }
+    return {
+        "weekly_picks": db.weekly_picks.count_documents(query),
+        "prediction_versions": db.prediction_versions.count_documents(query),
+    }
+
+
+def delete_week_predictions(season: int, week: int, league: str = "nfl") -> dict:
+    """Atomically delete official picks and pregame versions for one exact week."""
+    client = get_client()
+    query = {
+        "league": league,
+        "season": int(season),
+        "week": int(week),
+    }
+    deleted = {"weekly_picks": 0, "prediction_versions": 0}
+    database = get_db()
+    with client.start_session() as session:
+        with session.start_transaction():
+            deleted["weekly_picks"] = database.weekly_picks.delete_many(
+                query, session=session
+            ).deleted_count
+            deleted["prediction_versions"] = (
+                database.prediction_versions.delete_many(
+                    query, session=session
+                ).deleted_count
+            )
+    return deleted
+
+
 def get_weekly_picks(season: int, week: int, league: str = "nfl") -> pd.DataFrame:
     db = get_db()
     docs = list(
