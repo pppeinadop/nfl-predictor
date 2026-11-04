@@ -2016,12 +2016,13 @@ else:
 
 
 # ---------- Tabs ----------
-tab_picks, tab_props, tab_nfl_gen, tab_ncaaf_flow = st.tabs(
+tab_picks, tab_props, tab_nfl_gen, tab_ncaaf_flow, tab_delete_week = st.tabs(
     [
         "🏟️ Partidos",
         "⭐ Props de jugadores",
         "🏈 Generar NFL",
         "🏈 Generar NCAAF",
+        "🗑️ Eliminar semana",
     ]
 )
 
@@ -2800,6 +2801,166 @@ with tab_ncaaf_flow:
         else:
             st.error(
                 f"Falló la sincronización de resultados: {ncaaf_sync['error']}"
+            )
+
+
+with tab_delete_week:
+    st.subheader("Eliminar pronósticos de una semana")
+    st.warning(
+        "Esta acción elimina de MongoDB todos los pronósticos guardados "
+        "(incluidos los retrospectivos) y sus versiones de la liga, temporada y "
+        "semana seleccionadas. No se puede deshacer."
+    )
+    st.info(
+        "Se conservarán las props de jugadores, las cuotas cacheadas y los ratings. "
+        "Después podrás volver a generar los pronósticos de esa semana."
+    )
+
+    delete_col_league, delete_col_season = st.columns(2)
+    with delete_col_league:
+        delete_league = st.selectbox(
+            "Liga para eliminar",
+            options=["nfl", "ncaaf"],
+            format_func=lambda value: league_options[value],
+            key="delete_prediction_league",
+        )
+    with delete_col_season:
+        delete_season = st.number_input(
+            "Temporada para eliminar",
+            min_value=2015,
+            max_value=2030,
+            value=int(config.CURRENT_SEASON),
+            step=1,
+            key="delete_prediction_season",
+        )
+
+    try:
+        deletable_weeks = db.list_prediction_weeks(
+            int(delete_season), delete_league
+        )
+    except Exception as exc:
+        deletable_weeks = []
+        st.error(
+            f"No se pudieron consultar los pronósticos: {type(exc).__name__}: {exc}"
+        )
+
+    if not deletable_weeks:
+        st.info(
+            f"No hay pronósticos oficiales ni versiones de "
+            f"{league_options[delete_league]} {int(delete_season)} para eliminar."
+        )
+    else:
+        delete_week = st.selectbox(
+            "Semana para eliminar",
+            options=deletable_weeks,
+            key="delete_prediction_week",
+        )
+        delete_target = (
+            delete_league,
+            int(delete_season),
+            int(delete_week),
+        )
+        delete_counts = db.get_week_prediction_counts(*(
+            int(delete_season), int(delete_week), delete_league
+        ))
+        official_count = delete_counts["weekly_picks"]
+        versions_count = delete_counts["prediction_versions"]
+
+        count_col_official, count_col_versions = st.columns(2)
+        count_col_official.metric("Pronósticos guardados", official_count)
+        count_col_versions.metric("Versiones pregame", versions_count)
+
+        picks_to_delete = db.get_weekly_picks(
+            int(delete_season), int(delete_week), delete_league
+        )
+        if not picks_to_delete.empty:
+            with st.expander("Ver pronósticos que se eliminarán"):
+                visible_pick_columns = [
+                    column for column in (
+                        "partido",
+                        "away_team",
+                        "home_team",
+                        "marcador_proyectado",
+                        "prediction_mode",
+                    )
+                    if column in picks_to_delete.columns
+                ]
+                st.dataframe(
+                    picks_to_delete[visible_pick_columns],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        versions_to_delete = db.get_prediction_versions(
+            int(delete_season), int(delete_week), delete_league
+        )
+        if not versions_to_delete.empty:
+            with st.expander("Ver versiones pregame que se eliminarán"):
+                st.dataframe(
+                    versions_to_delete,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        confirmation_phrase = (
+            f"BORRAR {delete_league.upper()} {int(delete_season)} "
+            f"SEMANA {int(delete_week)}"
+        )
+        confirmation = st.text_input(
+            f"Escribe exactamente `{confirmation_phrase}` para confirmar",
+            key="delete_prediction_confirmation",
+        )
+        st.caption(
+            "La eliminación solo ocurre al pulsar el botón; abrir esta pestaña "
+            "o cambiar la semana no modifica la base."
+        )
+        if st.button(
+            "Eliminar pronósticos y versiones",
+            type="primary",
+            disabled=(
+                official_count + versions_count == 0
+                or confirmation.strip() != confirmation_phrase
+            ),
+            key="delete_prediction_submit",
+            use_container_width=True,
+        ):
+            try:
+                deleted_counts = db.delete_week_predictions(
+                    int(delete_season), int(delete_week), delete_league
+                )
+                remaining_counts = db.get_week_prediction_counts(
+                    int(delete_season), int(delete_week), delete_league
+                )
+                st.session_state["delete_prediction_result"] = {
+                    "target": delete_target,
+                    "deleted": deleted_counts,
+                    "remaining": remaining_counts,
+                }
+            except Exception as exc:
+                st.error(
+                    "No se pudo completar la eliminación. No se informó éxito; "
+                    f"detalle: {type(exc).__name__}: {exc}"
+                )
+
+        deletion_result = st.session_state.get("delete_prediction_result")
+        if deletion_result and deletion_result["target"] == delete_target:
+            deleted = deletion_result["deleted"]
+            remaining = deletion_result["remaining"]
+            if not any(remaining.values()):
+                st.success(
+                    "Eliminación completada: "
+                    f"{deleted['weekly_picks']} pronósticos guardados y "
+                    f"{deleted['prediction_versions']} versiones eliminados. "
+                    "La semana queda disponible para regenerarse."
+                )
+            else:
+                st.error(
+                    "La operación terminó, pero aún quedan documentos para esta "
+                    "semana. Verifica los conteos antes de regenerar."
+                )
+            st.caption(
+                f"Restantes: {remaining['weekly_picks']} pronósticos guardados, "
+                f"{remaining['prediction_versions']} versiones."
             )
 
 
