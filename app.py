@@ -1471,9 +1471,10 @@ def _run_generation(season, league, from_week, to_week,
     return ok, fail
 
 
-def _preview_generation_week(season, week, league, prediction_mode):
+def _preview_generation_week(season, week, league, prediction_mode, games=None):
     stats = predict_games._stats_module(league)
-    games = stats.get_week_games(season, week)
+    if games is None:
+        games = stats.get_week_games(season, week)
     saved = db.get_weekly_picks(season, week, league)
     saved_games = set()
     if not saved.empty:
@@ -1537,6 +1538,50 @@ def _preview_generation_week(season, week, league, prediction_mode):
     return pd.DataFrame(rows), rebuild_weeks._has_market_lines(market), market.attrs.get(
         "cache_updated_at"
     )
+
+
+def _preview_nfl_flow(season, week, prediction_mode):
+    stats = predict_games._stats_module("nfl")
+    messages = io.StringIO()
+    with contextlib.redirect_stdout(messages):
+        games = stats.get_week_games(season, week)
+        prior_results = stats.get_completed_games(season, before_week=week)
+
+    preview, _, _ = _preview_generation_week(
+        season, week, "nfl", prediction_mode, games=games
+    )
+    saved = db.get_weekly_picks(season, week, "nfl")
+    market = db.get_market_cache(season, week, "nfl")
+    ratings = predict_games.elo_model.load_ratings("nfl")
+    odds_api_key = str(config.ODDS_API_KEY or "").strip()
+    odds_api_configured = bool(
+        odds_api_key and odds_api_key not in {"TU_API_KEY_AQUI", "None"}
+    )
+    market_fields = [
+        "consensus_spread_home",
+        "consensus_total",
+        "consensus_ml_home",
+        "consensus_ml_away",
+    ]
+    market_line_count = (
+        int(market[[
+            field for field in market_fields if field in market.columns
+        ]].notna().any(axis=1).sum())
+        if not market.empty and any(field in market.columns for field in market_fields)
+        else 0
+    )
+    return {
+        "games": games,
+        "preview": preview.rename(columns={"Estado": "Estado en Mongo"}),
+        "provider": "nfl_data_py",
+        "provider_messages": messages.getvalue().strip(),
+        "odds_api_configured": odds_api_configured,
+        "prior_result_count": len(prior_results),
+        "rating_team_count": len(ratings),
+        "saved_pick_count": len(saved),
+        "market_line_count": market_line_count,
+        "market_updated_at": market.attrs.get("cache_updated_at"),
+    }
 
 
 def _preview_ncaaf_flow(season, week, prediction_mode):
@@ -2225,98 +2270,86 @@ with tab_props:
 
 # --- TAB: Generar NFL ---
 with tab_nfl_gen:
-    st.subheader("NFL · Generar predicciones")
+    st.subheader("NFL · Flujo real de datos")
     st.caption(
-        "Generación NFL independiente del flujo NCAAF. Revisa una semana antes "
-        "de ejecutar el pipeline."
+        "Sigue el calendario, resultados, ratings, mercado y MongoDB antes y después "
+        "de ejecutar el pipeline NFL."
     )
     st.markdown(
-        "**1. Revisa** el calendario y los registros guardados. "
-        "**2. Genera** solo después de comprobar el resumen. "
-        "**3. Sincroniza** resultados finales por separado."
+        "**Orden:** calendario y resultados (`data_fetch.py`) → ratings y proyección "
+        "(`elo_model.py`, `team_stats.py`, `predict_games.py`) → mercado "
+        "(`data_fetch.py`) → guardado y verificación (`db.py`) → resultado final."
     )
-    last_nfl_run = st.session_state.get("nfl_gen_last_run")
-    if last_nfl_run:
-        run_state = "completada" if last_nfl_run["success"] else "con errores"
-        st.caption(
-            f"Última ejecución NFL: temporada {last_nfl_run['season']} · "
-            f"semana {last_nfl_run['week']} · {last_nfl_run['mode']} · {run_state}."
-        )
 
     st.session_state.setdefault("nfl_gen_season", int(config.CURRENT_SEASON))
-    nfl_gen_season = st.number_input(
-        "Temporada NFL",
-        min_value=2015,
-        max_value=2030,
-        step=1,
-        key="nfl_gen_season",
-    )
-    st.session_state.setdefault("nfl_gen_week", 1)
-    nfl_gen_week = st.number_input(
-        "Semana NFL",
-        min_value=1,
-        max_value=22,
-        step=1,
-        key="nfl_gen_week",
-    )
-    nfl_mode_label = st.radio(
-        "Tipo de predicción",
-        options=[
-            "Oficial (crear una sola vez)",
-            "Actualizar antes del partido (guardar versión)",
-            "Reconstrucción histórica (después del kickoff)",
-        ],
-        key="nfl_gen_mode",
-        help=(
-            "La reconstrucción solo agrega partidos que ya iniciaron y no tienen "
-            "registro; no reemplaza picks existentes."
-        ),
-    )
-    nfl_prediction_mode = (
-        "update" if nfl_mode_label.startswith("Actualizar")
-        else "historical" if nfl_mode_label.startswith("Reconstrucción")
-        else "official"
-    )
-    if nfl_prediction_mode == "historical":
-        st.info(
-            "Modo retrospectivo: no usa cuotas actuales; solo acepta caché anterior "
-            "al kickoff y no guarda marcadores parciales."
+    nfl_cols = st.columns(2)
+    with nfl_cols[0]:
+        nfl_gen_season = st.number_input(
+            "Temporada NFL",
+            min_value=2015,
+            max_value=2030,
+            step=1,
+            key="nfl_gen_season",
         )
+    st.session_state.setdefault("nfl_gen_week", 1)
+    with nfl_cols[1]:
+        nfl_gen_week = st.number_input(
+            "Semana NFL",
+            min_value=1,
+            max_value=22,
+            step=1,
+            key="nfl_gen_week",
+        )
+
+    nfl_mode_label = st.radio(
+        "Modo de guardado",
+        options=[
+            "Oficial (una vez, antes del kickoff)",
+            "Actualizar (versión pregame separada)",
+            "Histórico (partidos tras kickoff faltantes)",
+        ],
+        horizontal=True,
+        key="nfl_gen_mode",
+    )
+    if nfl_mode_label.startswith("Actualizar"):
+        nfl_prediction_mode = "update"
+    elif nfl_mode_label.startswith("Histórico"):
+        nfl_prediction_mode = "historical"
+    else:
+        nfl_prediction_mode = "official"
+
+    if nfl_prediction_mode == "historical":
         nfl_skip_odds = True
         nfl_refresh_odds = False
+        st.info(
+            "Modo histórico: solo usa cuotas guardadas en caché antes del kickoff; "
+            "no consulta cuotas actuales."
+        )
     else:
-        fetch_missing_nfl_market = st.checkbox(
-            "Buscar líneas en casas de apuestas si faltan en caché",
-            value=True,
-            key="nfl_gen_fetch_missing_market",
-            help=(
-                "Usa la caché existente. Si no contiene líneas utilizables, "
-                "consulta The Odds API."
-            ),
-        )
-        refresh_nfl_market = st.checkbox(
-            "Buscar cuotas actuales aunque ya haya caché",
-            value=False,
-            key="nfl_gen_refresh_market",
-            help=(
-                "Fuerza una consulta nueva a The Odds API, guarda el mercado "
-                "actualizado en caché y puede consumir cuota."
-            ),
-        )
+        odds_cols = st.columns(2)
+        with odds_cols[0]:
+            fetch_missing_nfl_market = st.checkbox(
+                "Si faltan líneas en caché, consultar las casas",
+                value=True,
+                key="nfl_gen_fetch_missing_market",
+                help="Consulta The Odds API solo si no hay líneas utilizables en caché.",
+            )
+        with odds_cols[1]:
+            refresh_nfl_market = st.checkbox(
+                "Forzar búsqueda actual aunque exista caché",
+                value=False,
+                key="nfl_gen_refresh_market",
+                help="Hace una consulta nueva a The Odds API y puede consumir cuota.",
+            )
         nfl_skip_odds = not fetch_missing_nfl_market and not refresh_nfl_market
         nfl_refresh_odds = refresh_nfl_market
         if refresh_nfl_market:
             st.warning(
-                "Se consultará The Odds API aunque ya haya líneas guardadas; "
-                "esta semana puede consumir cuota."
-            )
-        elif fetch_missing_nfl_market:
-            st.caption(
-                "Si existe mercado en caché, se reutilizará sin consultar otra vez. "
-                "Si falta, se consultará The Odds API (una llamada para esta semana)."
+                "Se consultarán las casas mediante The Odds API aunque haya líneas "
+                "guardadas; puede consumir cuota."
             )
 
-    nfl_review_token = (
+    nfl_flow_token = (
         int(nfl_gen_season),
         int(nfl_gen_week),
         nfl_prediction_mode,
@@ -2324,163 +2357,238 @@ with tab_nfl_gen:
         bool(nfl_refresh_odds),
     )
     nfl_review_clicked = st.button(
-        "1. Revisar semana (solo lectura)",
-        key="nfl_gen_review_button",
+        "1. Revisar entradas y registros (solo lectura)",
+        key="nfl_flow_review_button",
         use_container_width=True,
     )
     if nfl_review_clicked:
-        st.session_state["nfl_gen_preview"] = None
-        st.session_state["nfl_gen_last_run"] = None
+        st.session_state["nfl_flow_preview"] = None
+        st.session_state["nfl_flow_run"] = None
+        st.session_state["nfl_flow_sync"] = None
         try:
-            with st.spinner("Revisando calendario y picks existentes..."):
-                preview_df, has_cached_market, market_updated_at = (
-                    _preview_generation_week(
-                        int(nfl_gen_season), int(nfl_gen_week), "nfl",
-                        nfl_prediction_mode,
-                    )
+            with st.spinner("Leyendo calendario NFL, resultados y MongoDB..."):
+                nfl_preview = _preview_nfl_flow(
+                    int(nfl_gen_season),
+                    int(nfl_gen_week),
+                    nfl_prediction_mode,
                 )
-            st.session_state["nfl_gen_preview_token"] = nfl_review_token
-            st.session_state["nfl_gen_preview"] = preview_df
-            st.session_state["nfl_gen_market_available"] = has_cached_market
-            st.session_state["nfl_gen_market_updated_at"] = market_updated_at
+            st.session_state["nfl_flow_preview"] = nfl_preview
+            st.session_state["nfl_flow_preview_token"] = nfl_flow_token
         except Exception as exc:
-            st.error(f"No se pudo revisar la semana: {exc}")
+            st.session_state["nfl_flow_preview_token"] = None
+            st.error(f"Falló la revisión NFL: {type(exc).__name__}: {exc}")
 
     nfl_preview_is_current = (
-        st.session_state.get("nfl_gen_preview_token") == nfl_review_token
-        and st.session_state.get("nfl_gen_preview") is not None
+        st.session_state.get("nfl_flow_preview_token") == nfl_flow_token
+        and st.session_state.get("nfl_flow_preview") is not None
     )
     if nfl_preview_is_current:
-        preview_df = st.session_state["nfl_gen_preview"]
-        st.markdown("#### Resumen de la revisión")
-        if preview_df.empty:
-            st.warning("El calendario no devolvió partidos para esta semana.")
-        else:
-            st.dataframe(preview_df, use_container_width=True, hide_index=True)
-            st.caption(
-                f"{len(preview_df)} partidos en el calendario · "
-                f"{int(preview_df['Estado'].str.startswith('Listo').sum())} "
-                "marcados como listos para este modo."
+        nfl_preview = st.session_state["nfl_flow_preview"]
+        nfl_games = nfl_preview["games"]
+        st.markdown("#### 1 · Calendario y origen")
+        nfl_source, nfl_key, nfl_results, nfl_ratings, nfl_saved = st.columns(5)
+        nfl_source.metric("Proveedor", nfl_preview["provider"])
+        nfl_key.metric(
+            "API de cuotas",
+            "Configurada" if nfl_preview["odds_api_configured"] else "Falta",
+        )
+        nfl_results.metric(
+            "Resultados previos esta temporada",
+            nfl_preview["prior_result_count"],
+        )
+        nfl_ratings.metric(
+            "Equipos con rating Elo", nfl_preview["rating_team_count"]
+        )
+        nfl_saved.metric(
+            "Registros en `weekly_picks`", nfl_preview["saved_pick_count"]
+        )
+        if not nfl_preview["odds_api_configured"] and nfl_prediction_mode != "historical":
+            st.error(
+                "Falta `ODDS_API_KEY`; no se podrán consultar líneas actuales. "
+                "El modelo puede continuar sin mercado."
             )
-        if st.session_state.get("nfl_gen_market_available"):
+        if nfl_preview["provider_messages"]:
+            st.code(nfl_preview["provider_messages"], language="text")
+        if nfl_games.empty:
+            st.error(
+                "El calendario no devolvió partidos para esta semana. "
+                "La generación queda bloqueada."
+            )
+        else:
+            st.dataframe(
+                nfl_preview["preview"],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.markdown("#### 2 · Mercado")
+        if nfl_preview["market_line_count"]:
             if nfl_refresh_odds:
                 st.info(
-                    "Hay mercado en caché, pero se buscarán líneas actuales en las "
-                    "casas de apuestas al generar."
+                    f"La caché tiene líneas para {nfl_preview['market_line_count']} "
+                    "partidos, pero al generar se consultarán cuotas actuales."
                 )
             else:
-                st.caption(
-                    "Hay líneas en la caché de mercado y se reutilizarán sin una "
-                    "consulta nueva. Actualizada: "
-                    f"{fmt(st.session_state.get('nfl_gen_market_updated_at'))}."
+                st.success(
+                    f"`market_cache` tiene líneas para "
+                    f"{nfl_preview['market_line_count']} partidos. Se reutilizarán "
+                    f"sin consulta nueva. Actualizada: "
+                    f"{fmt(nfl_preview['market_updated_at'])}."
                 )
-        else:
-            if nfl_prediction_mode == "historical":
-                st.caption(
-                    "No hay líneas utilizables en caché; esta reconstrucción "
-                    "histórica continuará solo con el modelo."
-                )
-            elif nfl_refresh_odds:
-                st.info(
-                    "Al generar se consultarán las casas de apuestas mediante "
-                    "The Odds API y se guardarán las líneas disponibles."
-                )
-            elif nfl_skip_odds:
-                st.caption(
-                    "No hay líneas utilizables en caché; se generará solo "
-                    "el pronóstico del modelo."
-                )
-            else:
-                st.caption(
-                    "No hay líneas utilizables en caché; al generar se consultará "
-                    "The Odds API para buscar líneas en las casas."
-                )
+        elif nfl_prediction_mode == "historical" or nfl_skip_odds:
+            st.warning(
+                "No hay líneas utilizables en caché. No se consultará la API; "
+                "el modelo podrá generar sin mercado."
+            )
+        elif nfl_refresh_odds or not nfl_skip_odds:
+            st.info(
+                "No hay líneas utilizables en caché. Al generar se consultarán "
+                "las casas mediante The Odds API."
+            )
+
+        st.markdown("#### 3 · Proyección y escritura")
         st.caption(
-            "La revisión no genera proyecciones ni escribe en MongoDB. "
-            "La generación se ejecuta únicamente con el botón siguiente."
+            "Al generar se ejecuta `rebuild_weeks.rebuild_week`: actualiza ratings "
+            "Elo, calcula la proyección, guarda según el modo seleccionado y vuelve "
+            "a leer `weekly_picks` para verificar el resultado."
         )
 
-    can_generate_nfl = bool(
+    nfl_previous_run = st.session_state.get("nfl_flow_run")
+    nfl_run_attempted = bool(
+        nfl_previous_run and nfl_previous_run.get("token") == nfl_flow_token
+    )
+    can_run_nfl = bool(
         nfl_preview_is_current
-        and not st.session_state["nfl_gen_preview"].empty
+        and not st.session_state["nfl_flow_preview"]["games"].empty
+        and not nfl_run_attempted
     )
-    generate_nfl_clicked = st.button(
+    nfl_run_clicked = st.button(
         f"2. Generar NFL · semana {int(nfl_gen_week)}",
-        key="nfl_gen_execute_button",
+        key="nfl_flow_run_button",
         type="primary",
-        disabled=not can_generate_nfl,
+        disabled=not can_run_nfl,
         help=(
-            "Primero pulsa «1. Revisar semana» y confirma que el calendario "
-            "muestre partidos."
-            if not can_generate_nfl
-            else "Genera únicamente esta semana de NFL con el modo seleccionado."
+            "Esta revisión ya ejecutó el flujo; vuelve a revisar para habilitar otro intento."
+            if nfl_run_attempted
+            else "Primero completa el paso 1 y confirma que el calendario devuelva partidos."
         ),
         use_container_width=True,
     )
-    if generate_nfl_clicked:
-        st.session_state["nfl_gen_preview_token"] = None
-        progress_placeholder = st.empty()
-        log_placeholder = st.empty()
-        with st.spinner("Generando la semana seleccionada..."):
-            generated, failed = _run_generation(
-                int(nfl_gen_season),
-                "nfl",
-                int(nfl_gen_week),
-                int(nfl_gen_week),
-                skip_odds=nfl_skip_odds,
-                refresh_odds=nfl_refresh_odds,
-                verbose=True,
-                prediction_mode=nfl_prediction_mode,
-                log_placeholder=log_placeholder,
-                progress_placeholder=progress_placeholder,
-            )
-        if generated:
-            st.success(
-                f"NFL temporada {int(nfl_gen_season)}, semana {int(nfl_gen_week)} "
-                "procesada. Revisa el resumen de guardado "
-                "en la salida anterior."
-            )
-        if failed:
-            st.error(f"No se pudo completar la semana NFL {int(nfl_gen_week)}.")
-        st.session_state["nfl_gen_last_run"] = {
-            "week": int(nfl_gen_week),
-            "season": int(nfl_gen_season),
-            "mode": nfl_prediction_mode,
-            "success": bool(generated) and not bool(failed),
-        }
-        st.info(
-            "Para volver a ejecutar, revisa la semana otra vez. Los modos oficial "
-            "e histórico protegen registros existentes; las actualizaciones crean "
-            "una nueva versión por cada ejecución aceptada."
-        )
-
-    last_nfl_run = st.session_state.get("nfl_gen_last_run")
-    can_sync_nfl_results = bool(
-        last_nfl_run
-        and last_nfl_run["success"]
-        and last_nfl_run["season"] == int(nfl_gen_season)
-        and last_nfl_run["week"] == int(nfl_gen_week)
-    )
-    sync_nfl_results = st.button(
-        f"3. Sincronizar resultados NFL · semana {int(nfl_gen_week)}",
-        key="nfl_gen_sync_button",
-        disabled=not can_sync_nfl_results,
-        help=(
-            "Actualiza únicamente resultados finales; no vuelve a calcular "
-            "proyecciones. Se habilita cuando termina correctamente el paso 2 "
-            "para esta temporada y semana NFL."
-        ),
-        use_container_width=True,
-    )
-    if sync_nfl_results:
-        with st.spinner("Consultando resultados finales..."):
-            sync_summary = rebuild_weeks.sync_final_results(
+    if nfl_run_clicked:
+        output = io.StringIO()
+        try:
+            with st.spinner("Ejecutando el pipeline NFL..."):
+                with contextlib.redirect_stdout(output):
+                    success = rebuild_weeks.rebuild_week(
+                        int(nfl_gen_season),
+                        int(nfl_gen_week),
+                        "nfl",
+                        skip_odds=nfl_skip_odds,
+                        refresh_odds=nfl_refresh_odds,
+                        verbose=True,
+                        prediction_mode=nfl_prediction_mode,
+                    )
+            saved_after = db.get_weekly_picks(
                 int(nfl_gen_season), int(nfl_gen_week), "nfl"
             )
-        st.success(
-            f"Resultados actualizados: {sync_summary['updated']} partidos. "
-            f"Sin predicción coincidente: {sync_summary['not_found']}."
-        )
+            st.session_state["nfl_flow_run"] = {
+                "token": nfl_flow_token,
+                "success": bool(success),
+                "saved_after": saved_after,
+                "output": output.getvalue(),
+            }
+        except Exception as exc:
+            st.session_state["nfl_flow_run"] = {
+                "token": nfl_flow_token,
+                "success": False,
+                "saved_after": pd.DataFrame(),
+                "output": output.getvalue(),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    nfl_run = st.session_state.get("nfl_flow_run")
+    nfl_run_is_current = bool(
+        nfl_run and nfl_run.get("token") == nfl_flow_token
+    )
+    if nfl_run_is_current:
+        if nfl_run.get("success"):
+            st.success(
+                f"El pipeline terminó. MongoDB devuelve ahora "
+                f"{len(nfl_run['saved_after'])} registros en `weekly_picks`."
+            )
+        else:
+            st.error("El pipeline no terminó correctamente; revisa el registro por etapa.")
+        if nfl_run.get("error"):
+            st.error(nfl_run["error"])
+        st.code(nfl_run.get("output", ""), language="text")
+        if not nfl_run["saved_after"].empty:
+            st.dataframe(
+                nfl_run["saved_after"],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning(
+                "La lectura posterior de `weekly_picks` no encontró documentos "
+                "para esta semana NFL."
+            )
+
+    nfl_previous_sync = st.session_state.get("nfl_flow_sync")
+    nfl_sync_attempted = bool(
+        nfl_previous_sync and nfl_previous_sync.get("token") == nfl_flow_token
+    )
+    nfl_sync_clicked = st.button(
+        f"3. Sincronizar resultados finales NFL · semana {int(nfl_gen_week)}",
+        key="nfl_gen_sync_button",
+        disabled=not (
+            nfl_run_is_current
+            and nfl_run.get("success")
+            and not nfl_sync_attempted
+        ),
+        help=(
+            "Se habilita después del paso 2 y permite una sincronización por revisión. "
+            "Solo sincroniza resultados finales."
+        ),
+        use_container_width=True,
+    )
+    if nfl_sync_clicked:
+        try:
+            with st.spinner("Consultando resultados finales NFL..."):
+                sync_summary = rebuild_weeks.sync_final_results(
+                    int(nfl_gen_season), int(nfl_gen_week), "nfl"
+                )
+            refreshed_picks = db.get_weekly_picks(
+                int(nfl_gen_season), int(nfl_gen_week), "nfl"
+            )
+            st.session_state["nfl_flow_sync"] = {
+                "token": nfl_flow_token,
+                "success": True,
+                "summary": sync_summary,
+                "picks": refreshed_picks,
+            }
+        except Exception as exc:
+            st.session_state["nfl_flow_sync"] = {
+                "token": nfl_flow_token,
+                "success": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    nfl_sync = st.session_state.get("nfl_flow_sync")
+    if nfl_sync and nfl_sync.get("token") == nfl_flow_token:
+        if nfl_sync.get("success"):
+            sync_summary = nfl_sync["summary"]
+            st.success(
+                f"Marcadores finales sincronizados: {sync_summary['updated']}. "
+                f"Partidos sin registro asociado: {sync_summary['not_found']}."
+            )
+            if not nfl_sync["picks"].empty:
+                st.dataframe(
+                    nfl_sync["picks"],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+        else:
+            st.error(f"Falló la sincronización NFL: {nfl_sync['error']}")
 
 
 # --- TAB: Flujo NCAAF ---
