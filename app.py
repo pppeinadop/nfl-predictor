@@ -2284,21 +2284,35 @@ with tab_nfl_gen:
         nfl_skip_odds = True
         nfl_refresh_odds = False
     else:
-        fetch_missing_market = st.checkbox(
-            "Obtener también líneas de mercado automáticamente",
+        fetch_missing_nfl_market = st.checkbox(
+            "Buscar líneas en casas de apuestas si faltan en caché",
             value=True,
             key="nfl_gen_fetch_missing_market",
             help=(
-                "Usa primero las líneas guardadas. Si no hay caché utilizable, "
-                "consulta The Odds API; puede consumir cuota."
+                "Usa la caché existente. Si no contiene líneas utilizables, "
+                "consulta The Odds API."
             ),
         )
-        nfl_skip_odds = not fetch_missing_market
-        nfl_refresh_odds = False
-        if fetch_missing_market:
+        refresh_nfl_market = st.checkbox(
+            "Buscar cuotas actuales aunque ya haya caché",
+            value=False,
+            key="nfl_gen_refresh_market",
+            help=(
+                "Fuerza una consulta nueva a The Odds API, guarda el mercado "
+                "actualizado en caché y puede consumir cuota."
+            ),
+        )
+        nfl_skip_odds = not fetch_missing_nfl_market and not refresh_nfl_market
+        nfl_refresh_odds = refresh_nfl_market
+        if refresh_nfl_market:
+            st.warning(
+                "Se consultará The Odds API aunque ya haya líneas guardadas; "
+                "esta semana puede consumir cuota."
+            )
+        elif fetch_missing_nfl_market:
             st.caption(
-                "Se usará la caché si existe; si faltan líneas, se consultará "
-                "The Odds API (máximo una llamada para esta semana)."
+                "Si existe mercado en caché, se reutilizará sin consultar otra vez. "
+                "Si falta, se consultará The Odds API (una llamada para esta semana)."
             )
 
     nfl_review_token = (
@@ -2306,6 +2320,7 @@ with tab_nfl_gen:
         int(nfl_gen_week),
         nfl_prediction_mode,
         bool(nfl_skip_odds),
+        bool(nfl_refresh_odds),
     )
     nfl_review_clicked = st.button(
         "1. Revisar semana (solo lectura)",
@@ -2347,15 +2362,27 @@ with tab_nfl_gen:
                 "marcados como listos para este modo."
             )
         if st.session_state.get("nfl_gen_market_available"):
-            st.caption(
-                "Hay líneas en la caché de mercado. Actualizada: "
-                f"{fmt(st.session_state.get('nfl_gen_market_updated_at'))}."
-            )
+            if nfl_refresh_odds:
+                st.info(
+                    "Hay mercado en caché, pero se buscarán líneas actuales en las "
+                    "casas de apuestas al generar."
+                )
+            else:
+                st.caption(
+                    "Hay líneas en la caché de mercado y se reutilizarán sin una "
+                    "consulta nueva. Actualizada: "
+                    f"{fmt(st.session_state.get('nfl_gen_market_updated_at'))}."
+                )
         else:
             if nfl_prediction_mode == "historical":
                 st.caption(
                     "No hay líneas utilizables en caché; esta reconstrucción "
                     "histórica continuará solo con el modelo."
+                )
+            elif nfl_refresh_odds:
+                st.info(
+                    "Al generar se consultarán las casas de apuestas mediante "
+                    "The Odds API y se guardarán las líneas disponibles."
                 )
             elif nfl_skip_odds:
                 st.caption(
@@ -2365,7 +2392,7 @@ with tab_nfl_gen:
             else:
                 st.caption(
                     "No hay líneas utilizables en caché; al generar se consultará "
-                    "The Odds API para intentar obtenerlas."
+                    "The Odds API para buscar líneas en las casas."
                 )
         st.caption(
             "La revisión no genera proyecciones ni escribe en MongoDB. "
