@@ -1728,9 +1728,39 @@ def _execute_complete_week_flow(
                 season, week, league
             )
             saved_after = db.get_weekly_picks(season, week, league)
+            market_records = (
+                db.get_prediction_versions(season, week, league)
+                if prediction_mode == "update"
+                else saved_after
+            )
+        market_fields = (
+            "spread_consenso",
+            "total_consenso",
+            "ml_home",
+            "ml_away",
+        )
+        available_market_fields = [
+            field for field in market_fields if field in market_records.columns
+        ]
+        games_with_market = (
+            int(market_records[available_market_fields].notna().any(axis=1).sum())
+            if available_market_fields and not market_records.empty
+            else 0
+        )
+        market_issue = next(
+            (
+                line.strip()
+                for line in output.getvalue().splitlines()
+                if "No se pudo traer mercado:" in line
+                or "The Odds API respondió, pero no devolvió líneas" in line
+            ),
+            None,
+        )
         return {
             "success": True,
             "saved_count": len(saved_after),
+            "games_with_market": games_with_market,
+            "market_issue": market_issue,
             "sync_summary": sync_summary,
             "output": output.getvalue(),
         }
@@ -2248,6 +2278,20 @@ if flow_notice:
     st.success(
         f"Proceso terminado para {flow_context}. La lista de semanas se actualizó."
     )
+    if flow_notice.get("games_with_market") == 0:
+        if flow_notice.get("prediction_mode") == "historical":
+            st.warning(
+                "Se generaron los pronósticos, pero no había cuotas de casas "
+                "guardadas para esos partidos. El modo histórico no consulta cuotas actuales."
+            )
+        else:
+            market_issue = flow_notice.get("market_issue")
+            st.warning(
+                "Se generaron los pronósticos, pero no se encontraron líneas de "
+                "casas para los partidos. Revisa ODDS_API_KEY en los secretos de "
+                "la app o fuerza una búsqueda actual al regenerar."
+                + (f" Detalle: {market_issue}" if market_issue else "")
+            )
 
 
 # ---------- Carga de datos ----------
@@ -2530,6 +2574,9 @@ with tab_nfl_gen:
                 "league": "nfl",
                 "season": int(nfl_gen_season),
                 "week": int(nfl_gen_week),
+                "games_with_market": result["games_with_market"],
+                "market_issue": result["market_issue"],
+                "prediction_mode": nfl_prediction_mode,
             }
             st.session_state["_pending_generated_week"] = {
                 "league": "nfl",
@@ -2618,6 +2665,9 @@ with tab_ncaaf_flow:
                 "league": "ncaaf",
                 "season": int(flow_season),
                 "week": int(flow_week),
+                "games_with_market": result["games_with_market"],
+                "market_issue": result["market_issue"],
+                "prediction_mode": flow_mode,
             }
             st.session_state["_pending_generated_week"] = {
                 "league": "ncaaf",
