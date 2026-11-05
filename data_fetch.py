@@ -107,6 +107,36 @@ def get_game_odds(sport_key: str = config.SPORT_KEY) -> list:
     return resp.json()
 
 
+def get_sport_events(sport_key: str = config.SPORT_KEY) -> list:
+    """Lista eventos próximos para localizar el identificador de un partido."""
+    if not config.ODDS_API_KEY or config.ODDS_API_KEY == "TU_API_KEY_AQUI":
+        raise ValueError("Falta configurar ODDS_API_KEY; no se llamó a The Odds API.")
+    url = f"{config.ODDS_API_BASE}/sports/{sport_key}/events"
+    resp = requests.get(
+        url,
+        params={"apiKey": config.ODDS_API_KEY},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_event_odds(sport_key: str, event_id: str) -> dict:
+    """Obtiene las líneas actuales de las casas para un único evento."""
+    if not config.ODDS_API_KEY or config.ODDS_API_KEY == "TU_API_KEY_AQUI":
+        raise ValueError("Falta configurar ODDS_API_KEY; no se llamó a The Odds API.")
+    url = f"{config.ODDS_API_BASE}/sports/{sport_key}/events/{event_id}/odds"
+    params = {
+        "apiKey": config.ODDS_API_KEY,
+        "regions": config.REGIONS,
+        "markets": config.GAME_MARKETS,
+        "oddsFormat": config.ODDS_FORMAT,
+    }
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def _normalize_team(name: str) -> str:
     """Minúsculas, sin puntuación, espacios colapsados. Conserva siglas entre paréntesis."""
     s = name.lower().strip()

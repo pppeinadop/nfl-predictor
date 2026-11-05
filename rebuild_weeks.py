@@ -142,6 +142,110 @@ def _fetch_and_cache(season: int, week: int, league: str,
         return _market_empty()
 
 
+def recalculate_game(season: int, week: int, league: str,
+                     home_team: str, away_team: str) -> dict:
+    """Fetch fresh market lines and replace one pending game's official pick."""
+    stats = predict_games._stats_module(league)
+    schedule_cache = getattr(stats, "_SCHEDULE_CACHE", None)
+    if schedule_cache is not None:
+        for key in list(schedule_cache):
+            cached_season = key[0] if isinstance(key, tuple) else key
+            if cached_season in {season, season - 1}:
+                schedule_cache.pop(key, None)
+
+    games = stats.get_week_games(season, week)
+    game_mask = (
+        (games["home_team"] == home_team)
+        & (games["away_team"] == away_team)
+    )
+    selected_games = games[game_mask]
+    if selected_games.empty:
+        raise ValueError(
+            f"No se encontró {away_team} @ {home_team} en "
+            f"{league.upper()} semana {week}."
+        )
+
+    kickoff = predict_games._kickoff_utc(selected_games.iloc[0], league)
+    kickoff_at = pd.to_datetime(kickoff, utc=True, errors="coerce")
+    if pd.isna(kickoff_at) or kickoff_at <= pd.Timestamp.now(tz="UTC"):
+        raise ValueError(
+            "El partido ya comenzó o no tiene kickoff verificable; "
+            "no se recalculó."
+        )
+
+    sport_key = config.LEAGUES[league]["odds_sport_key"]
+    events = data_fetch.get_sport_events(sport_key)
+    if not isinstance(events, list):
+        raise ValueError("The Odds API devolvió un listado de eventos inesperado.")
+    expected_home = (
+        config.TEAM_ABBR_TO_FULL.get(home_team, home_team)
+        if league == "nfl" else home_team
+    )
+    expected_away = (
+        config.TEAM_ABBR_TO_FULL.get(away_team, away_team)
+        if league == "nfl" else away_team
+    )
+    matching_events = []
+    for event in events:
+        event_home = event.get("home_team")
+        event_away = event.get("away_team")
+        if (
+            event_home
+            and event_away
+            and data_fetch.fuzzy_match_team(expected_home, [event_home])
+            and data_fetch.fuzzy_match_team(expected_away, [event_away])
+        ):
+            matching_events.append(event)
+    if len(matching_events) != 1:
+        raise ValueError(
+            "No se pudo identificar de forma única el partido en The Odds API. "
+            "Verifica los equipos y la fecha del evento."
+        )
+
+    event_id = matching_events[0].get("id")
+    if not event_id:
+        raise ValueError("The Odds API no devolvió el identificador del evento.")
+    event_odds = data_fetch.get_event_odds(sport_key, str(event_id))
+    if not isinstance(event_odds, dict):
+        raise ValueError("The Odds API devolvió un formato de cuotas inesperado.")
+    market = data_fetch.get_consensus_lines([event_odds])
+    game_market = _week_market_rows(market, selected_games, league)
+    if not _has_market_lines(game_market):
+        raise ValueError(
+            "The Odds API no devolvió líneas utilizables para este partido."
+        )
+
+    import adjustments
+    adjustments._injury_cache.clear()
+    ratings = predict_games.update_elo_with_results(
+        season, week, league, persist=False
+    )
+    game_market.attrs["cache_updated_at"] = pd.Timestamp.now(
+        tz="UTC"
+    ).to_pydatetime()
+    picks = predict_games.build_weekly_picks(
+        season,
+        week,
+        league,
+        market_df=game_market,
+        ratings=ratings,
+    )
+    recalculated = picks[
+        (picks["home_team"] == home_team)
+        & (picks["away_team"] == away_team)
+    ]
+    if recalculated.empty:
+        raise ValueError(
+            "El modelo no pudo producir un pronóstico para este partido."
+        )
+
+    db.save_market_cache(game_market, season, week, league)
+    db.replace_weekly_pick(
+        recalculated.iloc[0].to_dict(), season, week, league
+    )
+    return recalculated.iloc[0].to_dict()
+
+
 def rebuild_week(season: int, week: int, league: str,
                  skip_odds: bool = False, refresh_odds: bool = False,
                  verbose: bool = False, prediction_mode: str = "official") -> bool:

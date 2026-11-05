@@ -2036,6 +2036,56 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         )
         st.markdown(values_html, unsafe_allow_html=True)
 
+        kickoff_at = pd.to_datetime(
+            r.get("kickoff_utc"), utc=True, errors="coerce"
+        )
+        if (
+            pd.notna(kickoff_at)
+            and kickoff_at > pd.Timestamp.now(tz="UTC")
+            and not is_retrospective
+            and not (rr and pd.notna(rr))
+        ):
+            game_button_id = re.sub(
+                r"[^A-Za-z0-9_-]+",
+                "_",
+                f"{league}_{season}_{week}_{away_team}_{home_team}",
+            )
+            if st.button(
+                "Recalcular modelo y cuotas de este partido",
+                key=f"recalculate_game_{game_button_id}",
+                help=(
+                    "Consulta las cuotas actuales para este partido, vuelve a "
+                    "calcular el modelo con los datos disponibles y reemplaza "
+                    "solo su pronóstico guardado. Puede consumir cuota de The Odds API."
+                ),
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner(
+                        f"Actualizando datos y recalculando {away_team} @ {home_team}..."
+                    ):
+                        rebuild_weeks.recalculate_game(
+                            int(season),
+                            int(week),
+                            league,
+                            home_team,
+                            away_team,
+                        )
+                except Exception as exc:
+                    st.error(
+                        f"No se pudo recalcular {away_team} @ {home_team}. "
+                        f"No se confirmó ningún cambio del pronóstico: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                else:
+                    st.session_state["single_game_recalc_notice"] = {
+                        "league": league,
+                        "season": int(season),
+                        "week": int(week),
+                        "matchup": f"{away_team} @ {home_team}",
+                    }
+                    st.rerun()
+
         if rr and pd.notna(rr):
             result_content = _render_result_body(
                 html.escape(str(rr)),
@@ -2292,6 +2342,15 @@ if flow_notice:
                 "la app o fuerza una búsqueda actual al regenerar."
                 + (f" Detalle: {market_issue}" if market_issue else "")
             )
+
+single_game_notice = st.session_state.pop("single_game_recalc_notice", None)
+if single_game_notice:
+    st.success(
+        f"Recalculado desde cero: {single_game_notice['matchup']} · "
+        f"{league_options[single_game_notice['league']]} "
+        f"{single_game_notice['season']}, semana {single_game_notice['week']}. "
+        "Se actualizaron el pronóstico de este partido y sus cuotas."
+    )
 
 
 # ---------- Carga de datos ----------
