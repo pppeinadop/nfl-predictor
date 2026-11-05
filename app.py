@@ -623,6 +623,30 @@ st.markdown("""
     background: #223541;
     border-color: #658071;
   }
+  div[class*="st-key-game-recalc-"] div.stButton > button {
+    min-height: 1.8rem;
+    height: 1.8rem;
+    padding: 0.15rem 0.6rem;
+    color: #82919d;
+    background: #121e29;
+    border: 1px solid #293945;
+    border-radius: 7px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    opacity: 0.82;
+    box-shadow: none;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  div[class*="st-key-game-recalc-"] div.stButton > button:hover {
+    color: #c6d3dc;
+    background: #192733;
+    border-color: #40515e;
+    opacity: 1;
+  }
+  div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible {
+    outline: 2px solid #638374;
+    outline-offset: 2px;
+  }
   div.stButton > button[kind="primary"] {
     color: #07130e;
     background: var(--ui-green);
@@ -2050,41 +2074,42 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
                 "_",
                 f"{league}_{season}_{week}_{away_team}_{home_team}",
             )
-            if st.button(
-                "Recalcular modelo y cuotas de este partido",
-                key=f"recalculate_game_{game_button_id}",
-                help=(
-                    "Consulta las cuotas actuales para este partido, vuelve a "
-                    "calcular el modelo con los datos disponibles y reemplaza "
-                    "solo su pronóstico guardado. Puede consumir cuota de The Odds API."
-                ),
-                use_container_width=True,
-            ):
-                try:
-                    with st.spinner(
-                        f"Actualizando datos y recalculando {away_team} @ {home_team}..."
-                    ):
-                        rebuild_weeks.recalculate_game(
-                            int(season),
-                            int(week),
-                            league,
-                            home_team,
-                            away_team,
+            with st.container(key=f"game-recalc-{game_button_id}"):
+                if st.button(
+                    "↻ Recalcular",
+                    key=f"recalculate_game_{game_button_id}",
+                    help=(
+                        "Consulta las cuotas actuales para este partido, vuelve a "
+                        "calcular el modelo con los datos disponibles y reemplaza "
+                        "solo su pronóstico guardado. Puede consumir cuota de The Odds API."
+                    ),
+                    type="secondary",
+                ):
+                    try:
+                        with st.spinner(
+                            f"Actualizando datos y recalculando {away_team} @ {home_team}..."
+                        ):
+                            rebuild_weeks.recalculate_game(
+                                int(season),
+                                int(week),
+                                league,
+                                home_team,
+                                away_team,
+                            )
+                    except Exception as exc:
+                        st.error(
+                            f"No se pudo recalcular {away_team} @ {home_team}. "
+                            f"No se confirmó ningún cambio del pronóstico: "
+                            f"{type(exc).__name__}: {exc}"
                         )
-                except Exception as exc:
-                    st.error(
-                        f"No se pudo recalcular {away_team} @ {home_team}. "
-                        f"No se confirmó ningún cambio del pronóstico: "
-                        f"{type(exc).__name__}: {exc}"
-                    )
-                else:
-                    st.session_state["single_game_recalc_notice"] = {
-                        "league": league,
-                        "season": int(season),
-                        "week": int(week),
-                        "matchup": f"{away_team} @ {home_team}",
-                    }
-                    st.rerun()
+                    else:
+                        st.session_state["single_game_recalc_notice"] = {
+                            "league": league,
+                            "season": int(season),
+                            "week": int(week),
+                            "matchup": f"{away_team} @ {home_team}",
+                        }
+                        st.rerun()
 
         if rr and pd.notna(rr):
             result_content = _render_result_body(
