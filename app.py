@@ -1743,6 +1743,57 @@ def _execute_complete_week_flow(
         }
 
 
+def _current_nfl_week(season):
+    schedule = predict_games._stats_module("nfl").get_schedule(season)
+    if schedule.empty or "week" not in schedule.columns:
+        return None
+
+    regular_schedule = schedule.copy()
+    if "game_type" in regular_schedule.columns:
+        regular_games = regular_schedule[
+            regular_schedule["game_type"].astype(str).str.strip().str.upper()
+            == "REG"
+        ]
+        if not regular_games.empty:
+            regular_schedule = regular_games
+
+    regular_schedule["week"] = pd.to_numeric(
+        regular_schedule["week"], errors="coerce"
+    )
+    regular_schedule = regular_schedule[
+        regular_schedule["week"].between(1, 18)
+    ]
+    if regular_schedule.empty:
+        return None
+
+    if "gameday" in regular_schedule.columns:
+        game_dates = pd.to_datetime(
+            regular_schedule["gameday"], errors="coerce"
+        ).dt.date
+    elif "start_time" in regular_schedule.columns:
+        game_dates = (
+            pd.to_datetime(
+                regular_schedule["start_time"], errors="coerce", utc=True
+            )
+            .dt.tz_convert("America/New_York")
+            .dt.date
+        )
+    else:
+        return None
+
+    regular_schedule = regular_schedule.assign(_game_date=game_dates)
+    regular_schedule = regular_schedule.dropna(subset=["_game_date"])
+    if regular_schedule.empty:
+        return None
+
+    today = pd.Timestamp.now(tz="America/New_York").date()
+    week_end_dates = regular_schedule.groupby("week")["_game_date"].max()
+    upcoming_weeks = week_end_dates[week_end_dates >= today]
+    if not upcoming_weeks.empty:
+        return int(upcoming_weeks.index.min())
+    return int(week_end_dates.index.max())
+
+
 def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
     away_team, home_team = r["partido"].split(" @ ")
     home_rec = _resolve_record(r, "home", season, week, league, records_fallback)
@@ -2053,11 +2104,17 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
 
 
 # ---------- Sidebar ----------
+week_selection_policy = "current_nfl_week_v1"
+if st.session_state.get("_week_selection_policy") != week_selection_policy:
+    st.session_state["_week_selection_policy"] = week_selection_policy
+    st.session_state.pop("_week_context", None)
+
 pending_week_refresh = st.session_state.pop("_pending_generated_week", None)
 if pending_week_refresh:
     st.session_state["sidebar_league"] = pending_week_refresh["league"]
     st.session_state["sidebar_season"] = pending_week_refresh["season"]
-    st.session_state["_selected_week"] = pending_week_refresh["week"]
+    if pending_week_refresh["league"] != "nfl":
+        st.session_state["_selected_week"] = pending_week_refresh["week"]
     st.session_state["_week_context"] = (
         f"{pending_week_refresh['league']}_{pending_week_refresh['season']}"
     )
@@ -2081,27 +2138,64 @@ season = st.sidebar.number_input(
 
 try:
     available_weeks = db.list_available_weeks(season, league_choice)
+    if (
+        pending_week_refresh
+        and pending_week_refresh["league"] == league_choice
+        and pending_week_refresh["season"] == season
+    ):
+        available_weeks = db.list_available_weeks(season, league_choice)
 except Exception as e:
     st.sidebar.error(f"No se pudo conectar a MongoDB: {e}")
     st.error(f"❌ Error de conexión a MongoDB: {e}")
     st.stop()
 
+current_nfl_week = None
+if league_choice == "nfl":
+    try:
+        current_nfl_week = _current_nfl_week(int(season))
+    except Exception as e:
+        st.sidebar.warning(
+            f"No se pudo determinar la semana NFL actual: {type(e).__name__}: {e}"
+        )
+    if (
+        pending_week_refresh
+        and pending_week_refresh["league"] == "nfl"
+        and pending_week_refresh["season"] == season
+        and current_nfl_week is not None
+    ):
+        st.session_state["_selected_week"] = current_nfl_week
+
 week = None
 only_value = False
 
-if available_weeks:
-    sorted_weeks = sorted(available_weeks)
-    last_week = sorted_weeks[-1]
+sorted_weeks = sorted(int(available_week) for available_week in available_weeks)
+week_options = list(sorted_weeks)
+if current_nfl_week is not None and current_nfl_week not in week_options:
+    week_options.append(current_nfl_week)
+    week_options.sort()
 
+if week_options:
     context_key = f"{league_choice}_{season}"
     if st.session_state.get("_week_context") != context_key:
         st.session_state["_week_context"] = context_key
-        st.session_state["_selected_week"] = last_week
+        st.session_state["_selected_week"] = (
+            current_nfl_week
+            if league_choice == "nfl" and current_nfl_week is not None
+            else sorted_weeks[-1] if sorted_weeks else week_options[-1]
+        )
 
-    if st.session_state.get("_selected_week") not in sorted_weeks:
-        st.session_state["_selected_week"] = last_week
+    if st.session_state.get("_selected_week") not in week_options:
+        st.session_state["_selected_week"] = (
+            current_nfl_week
+            if league_choice == "nfl" and current_nfl_week is not None
+            else sorted_weeks[-1] if sorted_weeks else week_options[-1]
+        )
 
-    week = st.sidebar.selectbox("Semana", options=sorted_weeks, key="_selected_week")
+    week = st.sidebar.selectbox("Semana", options=week_options, key="_selected_week")
+    if week not in sorted_weeks:
+        st.sidebar.info(
+            f"La semana NFL {week} es la actual según el calendario, pero todavía no tiene pronósticos guardados."
+        )
     only_value = st.sidebar.checkbox("Mostrar solo con señal de valor", value=False)
 else:
     st.sidebar.info(
@@ -2115,6 +2209,15 @@ if available_weeks:
     st.sidebar.caption(f"Semanas existentes: {sorted(available_weeks)}")
 else:
     st.sidebar.caption("Semanas existentes: —")
+if (
+    pending_week_refresh
+    and pending_week_refresh["league"] == league_choice
+    and pending_week_refresh["season"] == season
+    and pending_week_refresh["week"] not in sorted_weeks
+):
+    st.sidebar.warning(
+        f"La semana {pending_week_refresh['week']} todavía no aparece en los pronósticos guardados."
+    )
 
 
 # ---------- Cabecera ----------
