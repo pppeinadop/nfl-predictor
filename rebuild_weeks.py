@@ -45,6 +45,34 @@ def _has_market_lines(market: pd.DataFrame) -> bool:
     )
 
 
+def _week_market_rows(market: pd.DataFrame, games: pd.DataFrame,
+                      league: str) -> pd.DataFrame:
+    if market is None or market.empty or games is None or games.empty:
+        return pd.DataFrame()
+
+    matched_rows = []
+    for _, game in games.iterrows():
+        market_row = predict_games._match_market_row(
+            market, game["home_team"], game["away_team"], league
+        )
+        if market_row is not None and any(
+            pd.notna(market_row.get(field))
+            for field in (
+                "consensus_spread_home",
+                "consensus_total",
+                "consensus_ml_home",
+                "consensus_ml_away",
+            )
+        ):
+            matched_rows.append(market_row)
+
+    if not matched_rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(matched_rows).reset_index(drop=True)
+    result.attrs.update(market.attrs)
+    return result
+
+
 def _resolve_market(season: int, week: int, league: str,
                     skip_odds: bool, refresh_odds: bool) -> pd.DataFrame:
     """
@@ -54,43 +82,61 @@ def _resolve_market(season: int, week: int, league: str,
     - refresh_odds=True                 → siempre pega a la API (y guarda cache).
     - skip_odds=False                   → intenta cache, si no hay pega a la API.
     """
-    if refresh_odds:
-        return _fetch_and_cache(season, week, league)
-
+    games = predict_games._stats_module(league).get_week_games(season, week)
     cached = db.get_market_cache(season, week, league)
-    if _has_market_lines(cached):
+    week_cached = _week_market_rows(cached, games, league)
+
+    if refresh_odds:
+        refreshed = _fetch_and_cache(season, week, league, games=games)
+        if _has_market_lines(refreshed):
+            return refreshed
+        if _has_market_lines(week_cached):
+            print("  Se conservan las líneas guardadas para esta semana")
+            return week_cached
+        return _market_empty()
+
+    if _has_market_lines(week_cached):
         print(f"  Mercado desde cache: {len(cached)} partidos")
-        return cached
+        return week_cached
     if not cached.empty:
-        print(f"  Cache de semana {week} sin líneas utilizables; buscando cuotas actuales")
+        print(
+            f"  La cache no tiene líneas para los partidos de la semana {week}; "
+            "buscando cuotas actuales"
+        )
 
     if skip_odds:
         print(f"  Sin cache para semana {week} (skip-odds, no se llama a la API)")
         return _market_empty()
 
     print(f"  Sin cache para semana {week}, pidiendo a la API (consume cuota)")
-    return _fetch_and_cache(season, week, league)
+    return _fetch_and_cache(season, week, league, games=games)
 
 
-def _fetch_and_cache(season: int, week: int, league: str) -> pd.DataFrame:
+def _fetch_and_cache(season: int, week: int, league: str,
+                     games: pd.DataFrame = None) -> pd.DataFrame:
     try:
+        if games is None:
+            games = predict_games._stats_module(league).get_week_games(
+                season, week
+            )
         sport_key = config.LEAGUES[league]["odds_sport_key"]
         odds_events = data_fetch.get_game_odds(sport_key)
         market = data_fetch.get_consensus_lines(odds_events)
-        if not _has_market_lines(market):
+        week_market = _week_market_rows(market, games, league)
+        if not _has_market_lines(week_market):
             print(
                 "  The Odds API respondió, pero no devolvió líneas utilizables "
-                "de moneyline, spread o total."
+                f"para los partidos de {league.upper()} semana {week}."
             )
             return _market_empty()
-        if not market.empty:
+        if not week_market.empty:
             try:
-                db.save_market_cache(market, season, week, league)
-                market.attrs["cache_updated_at"] = pd.Timestamp.now(tz="UTC").to_pydatetime()
-                print(f"  Mercado cacheado: {len(market)} partidos")
+                db.save_market_cache(week_market, season, week, league)
+                week_market.attrs["cache_updated_at"] = pd.Timestamp.now(tz="UTC").to_pydatetime()
+                print(f"  Mercado cacheado: {len(week_market)} partidos de la semana")
             except Exception as e:
                 print(f"  [Aviso] No se pudo cachear el mercado: {e}")
-        return market
+        return week_market
     except Exception as e:
         print(f"  No se pudo traer mercado: {e}")
         return _market_empty()
