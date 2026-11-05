@@ -455,6 +455,82 @@ def save_weekly_picks(df: pd.DataFrame, season: int, week: int, league: str = "n
     return summary
 
 
+def replace_weekly_pick(record: dict, season: int, week: int,
+                        league: str = "nfl") -> None:
+    """Replace one pending official pick after an explicit per-game recalculation."""
+    record = _mongo_safe_record(deepcopy(record))
+    home_team = record.get("home_team")
+    away_team = record.get("away_team")
+    if not home_team or not away_team:
+        raise ValueError("El pronóstico recalculado no identifica ambos equipos.")
+
+    query = {
+        "league": league,
+        "season": int(season),
+        "week": int(week),
+        "home_team": home_team,
+        "away_team": away_team,
+    }
+    db = get_db()
+    existing = db.weekly_picks.find_one(query)
+    if not existing:
+        raise ValueError("No existe un pronóstico guardado para este partido.")
+    if existing.get("retrospective"):
+        raise ValueError("No se puede reemplazar un pronóstico retrospectivo.")
+
+    kickoff = _to_utc_datetime(
+        record.get("kickoff_utc") or existing.get("kickoff_utc")
+    )
+    now = datetime.now(timezone.utc)
+    if kickoff is None or kickoff <= now:
+        raise ValueError(
+            "El partido ya comenzó o no tiene kickoff verificable; "
+            "no se reemplazó el pronóstico."
+        )
+
+    protected_fields = (
+        "_id",
+        "official_created_at",
+        "official_version",
+    )
+    for field in protected_fields:
+        record.pop(field, None)
+    record.update({
+        "league": league,
+        "season": int(season),
+        "week": int(week),
+        "prediction_mode": "official",
+        "prediction_generated_at": now,
+        "recalculated_at": now,
+        "official_created_at": existing.get("official_created_at", now),
+        "official_version": existing.get("official_version", 1),
+    })
+
+    refreshable_fields = (
+        "spread_consenso",
+        "total_consenso",
+        "ml_home",
+        "ml_away",
+        "casas_usadas",
+        "market_spread_line",
+        "market_total_line",
+        "odds_cache_updated_at",
+        "valor_spread",
+        "valor_total",
+    )
+    unset_fields = {
+        field: ""
+        for field in refreshable_fields
+        if field not in record or record[field] is None
+    }
+    update = {"$set": record}
+    if unset_fields:
+        update["$unset"] = unset_fields
+    result = db.weekly_picks.update_one(query, update)
+    if result.matched_count != 1:
+        raise RuntimeError("No se pudo actualizar el pronóstico del partido.")
+
+
 def sync_final_score(league: str, season: int, week: int, home_team: str,
                      away_team: str, home_score: int, away_score: int) -> bool:
     """Actualiza únicamente el marcador y la evaluación de una predicción oficial (con búsqueda flexible)."""
@@ -611,16 +687,21 @@ def save_market_cache(df: pd.DataFrame, season: int, week: int, league: str = "n
         return
     db = get_db()
     now = datetime.now(timezone.utc)
-    records = df.to_dict("records")
-    for rec in records:
-        for k, v in list(rec.items()):
-            if hasattr(v, "item"):
-                try:
-                    rec[k] = v.item()
-                except Exception:
-                    pass
+    cache_query = {"league": league, "season": season, "week": week}
+    existing = db.market_cache.find_one(cache_query, {"records": 1}) or {}
+    records_by_matchup = {}
+    for rec in existing.get("records", []):
+        key = (rec.get("home_team"), rec.get("away_team"))
+        if all(key):
+            records_by_matchup[key] = rec
+    for rec in df.to_dict("records"):
+        clean = _mongo_safe_record(rec)
+        key = (clean.get("home_team"), clean.get("away_team"))
+        if all(key):
+            records_by_matchup[key] = clean
+    records = list(records_by_matchup.values())
     db.market_cache.update_one(
-        {"league": league, "season": season, "week": week},
+        cache_query,
         {"$set": {"records": records, "updated_at": now}},
         upsert=True,
     )
