@@ -624,28 +624,40 @@ st.markdown("""
     border-color: #658071;
   }
   div[class*="st-key-game-recalc-"] div.stButton > button {
-    min-height: 1.8rem;
-    height: 1.8rem;
-    padding: 0.15rem 0.6rem;
-    color: #82919d;
-    background: #121e29;
-    border: 1px solid #293945;
-    border-radius: 7px;
-    font-size: 0.78rem;
-    font-weight: 500;
-    opacity: 0.82;
+    width: 2rem;
+    min-width: 2rem;
+    min-height: 2rem;
+    height: 2rem;
+    padding: 0;
+    color: #74d6a8;
+    background: #172a2b;
+    border: 1px solid #315848;
+    border-radius: 50%;
+    font-size: 1.25rem;
+    font-weight: 600;
+    opacity: 0.9;
     box-shadow: none;
     transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   }
   div[class*="st-key-game-recalc-"] div.stButton > button:hover {
-    color: #c6d3dc;
-    background: #192733;
-    border-color: #40515e;
+    color: #a6f0ca;
+    background: #203b36;
+    border-color: #4c8067;
     opacity: 1;
   }
   div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible {
-    outline: 2px solid #638374;
+    outline: 2px solid #74d6a8;
     outline-offset: 2px;
+  }
+  div[class*="st-key-game-values-"] {
+    position: relative;
+  }
+  div[class*="st-key-game-recalc-"] {
+    position: absolute;
+    z-index: 2;
+    right: calc(50% + 1.15rem);
+    bottom: 0.55rem;
+    width: 2rem;
   }
   div.stButton > button[kind="primary"] {
     color: #07130e;
@@ -1021,6 +1033,10 @@ st.markdown("""
     }
     .scoreboard-values {
       grid-template-columns: 1fr;
+    }
+    div[class*="st-key-game-recalc-"] {
+      right: 0.85rem;
+      bottom: 68%;
     }
     .scoreboard-scoreline {
       font-size: clamp(2rem, 8vw, 2.7rem);
@@ -2043,6 +2059,20 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         )
         st.markdown(probability_html, unsafe_allow_html=True)
 
+        kickoff_at = pd.to_datetime(
+            r.get("kickoff_utc"), utc=True, errors="coerce"
+        )
+        can_recalculate = (
+            pd.notna(kickoff_at)
+            and kickoff_at > pd.Timestamp.now(tz="UTC")
+            and not is_retrospective
+            and not (rr and pd.notna(rr))
+        )
+        game_button_id = re.sub(
+            r"[^A-Za-z0-9_-]+",
+            "_",
+            f"{league}_{season}_{week}_{away_team}_{home_team}",
+        )
         values_html = (
             '<div class="scoreboard-values">'
             '<section class="scoreboard-value-panel">'
@@ -2058,58 +2088,44 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
             f'{_value_row(f"ML local · {home_team}", fmt(ml_h))}'
             '</section></div>'
         )
-        st.markdown(values_html, unsafe_allow_html=True)
-
-        kickoff_at = pd.to_datetime(
-            r.get("kickoff_utc"), utc=True, errors="coerce"
-        )
-        if (
-            pd.notna(kickoff_at)
-            and kickoff_at > pd.Timestamp.now(tz="UTC")
-            and not is_retrospective
-            and not (rr and pd.notna(rr))
-        ):
-            game_button_id = re.sub(
-                r"[^A-Za-z0-9_-]+",
-                "_",
-                f"{league}_{season}_{week}_{away_team}_{home_team}",
-            )
-            with st.container(key=f"game-recalc-{game_button_id}"):
-                if st.button(
-                    "↻ Recalcular",
-                    key=f"recalculate_game_{game_button_id}",
-                    help=(
-                        "Consulta las cuotas actuales para este partido, vuelve a "
-                        "calcular el modelo con los datos disponibles y reemplaza "
-                        "solo su pronóstico guardado. Puede consumir cuota de The Odds API."
-                    ),
-                    type="secondary",
-                ):
-                    try:
-                        with st.spinner(
-                            f"Actualizando datos y recalculando {away_team} @ {home_team}..."
-                        ):
-                            rebuild_weeks.recalculate_game(
-                                int(season),
-                                int(week),
-                                league,
-                                home_team,
-                                away_team,
+        with st.container(key=f"game-values-{game_button_id}"):
+            st.markdown(values_html, unsafe_allow_html=True)
+            if can_recalculate:
+                with st.container(key=f"game-recalc-{game_button_id}"):
+                    if st.button(
+                        "⟳",
+                        key=f"recalculate_game_{game_button_id}",
+                        help=(
+                            "Consulta las cuotas actuales y recalcula el modelo "
+                            "solo para este partido. Puede consumir cuota de The Odds API."
+                        ),
+                        type="secondary",
+                    ):
+                        try:
+                            with st.spinner(
+                                f"Actualizando datos y recalculando {away_team} @ {home_team}..."
+                            ):
+                                rebuild_weeks.recalculate_game(
+                                    int(season),
+                                    int(week),
+                                    league,
+                                    home_team,
+                                    away_team,
+                                )
+                        except Exception as exc:
+                            st.error(
+                                f"No se pudo recalcular {away_team} @ {home_team}. "
+                                f"No se confirmó ningún cambio del pronóstico: "
+                                f"{type(exc).__name__}: {exc}"
                             )
-                    except Exception as exc:
-                        st.error(
-                            f"No se pudo recalcular {away_team} @ {home_team}. "
-                            f"No se confirmó ningún cambio del pronóstico: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
-                    else:
-                        st.session_state["single_game_recalc_notice"] = {
-                            "league": league,
-                            "season": int(season),
-                            "week": int(week),
-                            "matchup": f"{away_team} @ {home_team}",
-                        }
-                        st.rerun()
+                        else:
+                            st.session_state["single_game_recalc_notice"] = {
+                                "league": league,
+                                "season": int(season),
+                                "week": int(week),
+                                "matchup": f"{away_team} @ {home_team}",
+                            }
+                            st.rerun()
 
         if rr and pd.notna(rr):
             result_content = _render_result_body(
