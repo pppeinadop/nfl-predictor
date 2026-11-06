@@ -623,43 +623,79 @@ st.markdown("""
     background: #223541;
     border-color: #658071;
   }
-  div[class*="st-key-game-recalc-"] div.stButton > button {
-    width: 1.45rem;
-    min-width: 1.45rem;
-    min-height: 1.45rem;
-    height: 1.45rem;
-    padding: 0;
-    color: #5b9e7e;
-    background: #14221f;
-    border: 1px solid #273c33;
-    border-radius: 50%;
-    font-size: 0.95rem;
-    font-weight: 500;
-    opacity: 0.68;
-    box-shadow: none;
-    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
-  }
-  div[class*="st-key-game-recalc-"] div.stButton > button:hover {
-    color: #a6f0ca;
-    background: #203b36;
-    border-color: #4c8067;
-    opacity: 1;
-  }
-  div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible {
-    color: #a6f0ca;
-    opacity: 1;
-    outline: 2px solid #74d6a8;
-    outline-offset: 2px;
-  }
-  div[class*="st-key-game-values-"] {
-    position: relative;
-  }
   div[class*="st-key-game-recalc-"] {
     position: absolute;
     z-index: 2;
     right: calc(50% + 1.15rem);
     bottom: 0.55rem;
-    width: 1.45rem;
+    width: 1.4rem !important;
+    min-width: 1.4rem !important;
+    height: 1.4rem !important;
+    min-height: 1.4rem !important;
+    padding: 0 !important;
+    overflow: visible;
+  }
+  div[class*="st-key-game-recalc-"] [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+  }
+  div[class*="st-key-game-recalc-"] [data-testid="stElementContainer"] {
+    width: 1.4rem !important;
+    min-width: 1.4rem !important;
+    padding: 0 !important;
+  }
+  div[class*="st-key-game-recalc-"] [data-testid="stButton"] {
+    width: 1.4rem !important;
+    min-width: 1.4rem !important;
+  }
+  div[class*="st-key-game-recalc-"] div.stButton > button,
+  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    width: 1.4rem !important;
+    min-width: 1.4rem !important;
+    max-width: 1.4rem !important;
+    height: 1.4rem !important;
+    min-height: 1.4rem !important;
+    max-height: 1.4rem !important;
+    padding: 0 !important;
+    color: #527c69 !important;
+    background: #14221f !important;
+    border: 1px solid #273c33 !important;
+    border-radius: 50% !important;
+    font-size: 0.72rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    opacity: 0.7;
+    box-shadow: none !important;
+    white-space: nowrap;
+    overflow: visible;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  div[class*="st-key-game-recalc-"] div.stButton > button p,
+  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    font-size: 0.72rem !important;
+  }
+  div[class*="st-key-game-recalc-"] div.stButton > button:hover,
+  div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible,
+  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button:hover,
+  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button:focus-visible {
+    color: #a6f0ca !important;
+    background: #203b36 !important;
+    border-color: #4c8067 !important;
+    opacity: 1;
+  }
+  div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible,
+  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button:focus-visible {
+    outline: 2px solid #74d6a8 !important;
+    outline-offset: 2px;
+  }
+  div[class*="st-key-game-values-"] {
+    position: relative;
   }
   div.stButton > button[kind="primary"] {
     color: #07130e;
