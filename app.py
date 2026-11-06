@@ -1054,6 +1054,9 @@ st.markdown("""
     box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.1);
     backdrop-filter: blur(12px);
   }
+  body:has([data-testid="stSidebar"][aria-expanded="true"]) .weekly-summary-footer {
+    left: 23rem;
+  }
   .weekly-summary-heading {
     display: flex;
     align-items: baseline;
@@ -1125,6 +1128,11 @@ st.markdown("""
     }
     .weekly-summary-legend {
       text-align: left;
+    }
+  }
+  @media (max-width: 768px) {
+    body:has([data-testid="stSidebar"][aria-expanded="true"]) .weekly-summary-footer {
+      left: 0;
     }
   }
   @media (max-width: 760px) {
