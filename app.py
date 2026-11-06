@@ -2097,16 +2097,20 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         kickoff_at = pd.to_datetime(
             r.get("kickoff_utc"), utc=True, errors="coerce"
         )
+        game_button_id = re.sub(
+            r"[^A-Za-z0-9_-]+",
+            "_",
+            f"{league}_{season}_{week}_{away_team}_{home_team}",
+        )
+        unavailable_recalculations = st.session_state.get(
+            "unavailable_game_recalculations", []
+        )
         can_recalculate = (
             pd.notna(kickoff_at)
             and kickoff_at > pd.Timestamp.now(tz="UTC")
             and not is_retrospective
             and not (rr and pd.notna(rr))
-        )
-        game_button_id = re.sub(
-            r"[^A-Za-z0-9_-]+",
-            "_",
-            f"{league}_{season}_{week}_{away_team}_{home_team}",
+            and game_button_id not in unavailable_recalculations
         )
         values_html = (
             '<div class="scoreboard-values">'
@@ -2125,6 +2129,12 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         )
         with st.container(key=f"game-values-{game_button_id}"):
             st.markdown(values_html, unsafe_allow_html=True)
+            if st.session_state.get("game_recalc_kickoff_notice") == game_button_id:
+                st.warning(
+                    "El partido ya comenzó o su kickoff no se pudo verificar. "
+                    "Se ocultó el recálculo; el pronóstico guardado no cambió."
+                )
+                st.session_state.pop("game_recalc_kickoff_notice", None)
             if can_recalculate:
                 if st.button(
                     "Recalcular",
@@ -2147,6 +2157,26 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
                                 home_team,
                                 away_team,
                             )
+                    except ValueError as exc:
+                        if "El partido ya comenzó o no tiene kickoff verificable" in str(exc):
+                            unavailable_recalculations = set(
+                                st.session_state.get(
+                                    "unavailable_game_recalculations", []
+                                )
+                            )
+                            unavailable_recalculations.add(game_button_id)
+                            st.session_state[
+                                "unavailable_game_recalculations"
+                            ] = list(unavailable_recalculations)
+                            st.session_state[
+                                "game_recalc_kickoff_notice"
+                            ] = game_button_id
+                            st.rerun()
+                        st.error(
+                            f"No se pudo recalcular {away_team} @ {home_team}. "
+                            f"No se confirmó ningún cambio del pronóstico: "
+                            f"ValueError: {exc}"
+                        )
                     except Exception as exc:
                         st.error(
                             f"No se pudo recalcular {away_team} @ {home_team}. "

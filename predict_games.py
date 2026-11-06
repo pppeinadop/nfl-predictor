@@ -105,13 +105,43 @@ def _kickoff_utc(game, league: str):
     """Obtiene el inicio programado en UTC para bloquear pronósticos al kickoff."""
     field = "start_time" if league == "nfl" else "start_date"
     value = game.get(field)
-    if value is None or pd.isna(value):
-        return None
-    try:
-        stamp = pd.to_datetime(value, utc=True, errors="coerce")
-        return None if pd.isna(stamp) else stamp.to_pydatetime()
-    except Exception:
-        return None
+    if value is not None and not pd.isna(value):
+        try:
+            stamp = pd.to_datetime(value, utc=True, errors="coerce")
+            if not pd.isna(stamp):
+                return stamp.to_pydatetime()
+        except (TypeError, ValueError, OverflowError):
+            pass
+
+    if league == "nfl":
+        gameday = game.get("gameday")
+        gametime = game.get("gametime")
+        if (
+            gameday is None
+            or gametime is None
+            or pd.isna(gameday)
+            or pd.isna(gametime)
+        ):
+            return None
+        try:
+            stamp = pd.to_datetime(
+                f"{gameday} {gametime}", errors="coerce"
+            )
+            if pd.isna(stamp):
+                return None
+            stamp = stamp.tz_localize(
+                "America/New_York",
+                ambiguous="NaT",
+                nonexistent="NaT",
+            )
+            return (
+                None
+                if pd.isna(stamp)
+                else stamp.tz_convert("UTC").to_pydatetime()
+            )
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return None
 
 
 def _slot_label(fecha_iso, hora_hhmm) -> str:
