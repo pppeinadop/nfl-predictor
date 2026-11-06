@@ -623,79 +623,76 @@ st.markdown("""
     background: #223541;
     border-color: #658071;
   }
-  div[class*="st-key-game-recalc-"] {
-    position: absolute;
+  div[class*="st-key-game-values-"] {
+    position: relative;
+  }
+  div[class*="st-key-recalculate_game_"] {
+    position: absolute !important;
     z-index: 2;
     right: calc(50% + 1.15rem);
-    bottom: 0.55rem;
-    width: 1.4rem !important;
-    min-width: 1.4rem !important;
-    height: 1.4rem !important;
-    min-height: 1.4rem !important;
-    padding: 0 !important;
-    overflow: visible;
-  }
-  div[class*="st-key-game-recalc-"] [data-testid="stVerticalBlock"] {
-    gap: 0 !important;
-  }
-  div[class*="st-key-game-recalc-"] [data-testid="stElementContainer"] {
-    width: 1.4rem !important;
-    min-width: 1.4rem !important;
+    bottom: 1.2rem;
+    width: 1.45rem !important;
+    min-width: 1.45rem !important;
+    max-width: 1.45rem !important;
+    height: 1.45rem !important;
+    min-height: 1.45rem !important;
+    max-height: 1.45rem !important;
     padding: 0 !important;
   }
-  div[class*="st-key-game-recalc-"] [data-testid="stButton"] {
-    width: 1.4rem !important;
-    min-width: 1.4rem !important;
+  div[class*="st-key-recalculate_game_"] div.stButton,
+  div[class*="st-key-recalculate_game_"] [data-testid="stButton"] {
+    width: 1.45rem !important;
+    min-width: 1.45rem !important;
+    max-width: 1.45rem !important;
+    height: 1.45rem !important;
   }
-  div[class*="st-key-game-recalc-"] div.stButton > button,
-  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+  div[class*="st-key-recalculate_game_"] button {
+    display: grid !important;
+    place-items: center !important;
     box-sizing: border-box !important;
-    width: 1.4rem !important;
-    min-width: 1.4rem !important;
-    max-width: 1.4rem !important;
-    height: 1.4rem !important;
-    min-height: 1.4rem !important;
-    max-height: 1.4rem !important;
+    width: 1.45rem !important;
+    min-width: 1.45rem !important;
+    max-width: 1.45rem !important;
+    height: 1.45rem !important;
+    min-height: 1.45rem !important;
+    max-height: 1.45rem !important;
     padding: 0 !important;
     color: #527c69 !important;
     background: #14221f !important;
     border: 1px solid #273c33 !important;
     border-radius: 50% !important;
-    font-size: 0.72rem !important;
+    font-size: 0.82rem !important;
     font-weight: 500 !important;
     line-height: 1 !important;
     opacity: 0.7;
     box-shadow: none !important;
     white-space: nowrap;
-    overflow: visible;
     transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   }
-  div[class*="st-key-game-recalc-"] div.stButton > button p,
-  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button p {
-    margin: 0 !important;
+  div[class*="st-key-recalculate_game_"] button p {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
     padding: 0 !important;
-    line-height: 1 !important;
-    font-size: 0.72rem !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
   }
-  div[class*="st-key-game-recalc-"] div.stButton > button:hover,
-  div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible,
-  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button:hover,
-  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button:focus-visible {
+  div[class*="st-key-recalculate_game_"] button [data-testid="stIconMaterial"] {
+    font-size: 0.9rem !important;
+  }
+  div[class*="st-key-recalculate_game_"] button:hover,
+  div[class*="st-key-recalculate_game_"] button:focus-visible {
     color: #a6f0ca !important;
     background: #203b36 !important;
     border-color: #4c8067 !important;
     opacity: 1;
   }
-  div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible,
-  div[class*="st-key-game-recalc-"] [data-testid="stButton"] > button:focus-visible {
+  div[class*="st-key-recalculate_game_"] button:focus-visible {
     outline: 2px solid #74d6a8 !important;
     outline-offset: 2px;
-  }
-  div[class*="st-key-game-values-"] {
-    position: relative;
   }
   div.stButton > button[kind="primary"] {
     color: #07130e;
@@ -1072,9 +1069,9 @@ st.markdown("""
     .scoreboard-values {
       grid-template-columns: 1fr;
     }
-    div[class*="st-key-game-recalc-"] {
+    div[class*="st-key-recalculate_game_"] {
       right: 0.85rem;
-      bottom: 68%;
+      bottom: 63%;
     }
     .scoreboard-scoreline {
       font-size: clamp(2rem, 8vw, 2.7rem);
@@ -2129,41 +2126,41 @@ def _render_match_card(r, season, week, league, records_fallback, ncaaf_logos):
         with st.container(key=f"game-values-{game_button_id}"):
             st.markdown(values_html, unsafe_allow_html=True)
             if can_recalculate:
-                with st.container(key=f"game-recalc-{game_button_id}"):
-                    if st.button(
-                        "⟳",
-                        key=f"recalculate_game_{game_button_id}",
-                        help=(
-                            "Consulta las cuotas actuales y recalcula el modelo "
-                            "solo para este partido. Puede consumir cuota de The Odds API."
-                        ),
-                        type="secondary",
-                    ):
-                        try:
-                            with st.spinner(
-                                f"Actualizando datos y recalculando {away_team} @ {home_team}..."
-                            ):
-                                rebuild_weeks.recalculate_game(
-                                    int(season),
-                                    int(week),
-                                    league,
-                                    home_team,
-                                    away_team,
-                                )
-                        except Exception as exc:
-                            st.error(
-                                f"No se pudo recalcular {away_team} @ {home_team}. "
-                                f"No se confirmó ningún cambio del pronóstico: "
-                                f"{type(exc).__name__}: {exc}"
+                if st.button(
+                    "Recalcular",
+                    key=f"recalculate_game_{game_button_id}",
+                    help=(
+                        "Consulta las cuotas actuales y recalcula el modelo "
+                        "solo para este partido. Puede consumir cuota de The Odds API."
+                    ),
+                    type="secondary",
+                    icon=":material/refresh:",
+                ):
+                    try:
+                        with st.spinner(
+                            f"Actualizando datos y recalculando {away_team} @ {home_team}..."
+                        ):
+                            rebuild_weeks.recalculate_game(
+                                int(season),
+                                int(week),
+                                league,
+                                home_team,
+                                away_team,
                             )
-                        else:
-                            st.session_state["single_game_recalc_notice"] = {
-                                "league": league,
-                                "season": int(season),
-                                "week": int(week),
-                                "matchup": f"{away_team} @ {home_team}",
-                            }
-                            st.rerun()
+                    except Exception as exc:
+                        st.error(
+                            f"No se pudo recalcular {away_team} @ {home_team}. "
+                            f"No se confirmó ningún cambio del pronóstico: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                    else:
+                        st.session_state["single_game_recalc_notice"] = {
+                            "league": league,
+                            "season": int(season),
+                            "week": int(week),
+                            "matchup": f"{away_team} @ {home_team}",
+                        }
+                        st.rerun()
 
         if rr and pd.notna(rr):
             result_content = _render_result_body(
