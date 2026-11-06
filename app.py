@@ -1042,6 +1042,91 @@ st.markdown("""
   .scoreboard-result-panel .badge {
     margin-right: 0.35rem;
   }
+  .weekly-summary-footer {
+    position: fixed;
+    z-index: 999;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 10px clamp(16px, 3vw, 40px) 12px;
+    border-top: 1px solid #dbe3ee;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(12px);
+  }
+  .weekly-summary-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: #172033;
+    font-size: 0.9rem;
+    font-weight: 750;
+  }
+  .weekly-summary-legend {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-align: right;
+  }
+  .weekly-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .weekly-summary-item {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 10px;
+    border: 1px solid #e5eaf2;
+    border-radius: 9px;
+    background: #f8fafc;
+  }
+  .weekly-summary-label {
+    overflow: hidden;
+    color: #64748b;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .weekly-summary-value {
+    color: #172033;
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    line-height: 1.15;
+  }
+  .weekly-summary-detail {
+    color: #047857;
+    font-size: 0.68rem;
+    font-weight: 650;
+  }
+  @media (max-width: 900px) {
+    .weekly-summary-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .weekly-summary-footer {
+      padding-right: 16px;
+      padding-left: 16px;
+    }
+  }
+  @media (max-width: 560px) {
+    .weekly-summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .weekly-summary-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .weekly-summary-legend {
+      text-align: left;
+    }
+  }
   @media (max-width: 760px) {
     .scoreboard-topline {
       align-items: flex-start;
@@ -1196,6 +1281,52 @@ def _accuracy_metric(df: pd.DataFrame, col: str):
     if total == 0:
         return None
     return aciertos, total, round(100 * aciertos / total)
+
+
+def _render_week_summary_footer(picks_df, picks_full_df, league_label, season, week):
+    metrics = [
+        ("Partidos visibles", str(len(picks_df)), ""),
+        ("Señales spread", str(count_value_signals(picks_df, "valor_spread")), ""),
+        ("Señales O/U", str(count_value_signals(picks_df, "valor_total")), ""),
+    ]
+    for label, column in (
+        ("Aciertos ML", "acierto_ganador"),
+        ("Aciertos spread", "acierto_spread"),
+        ("Aciertos O/U", "acierto_total"),
+    ):
+        accuracy = _accuracy_metric(picks_full_df, column)
+        if accuracy is None:
+            metrics.append((label, "—", "Sin resultados evaluables"))
+        else:
+            hits, total, percent = accuracy
+            metrics.append((label, f"{hits}/{total}", f"{percent}% de acierto"))
+
+    metric_html = "".join(
+        '<div class="weekly-summary-item">'
+        f'<span class="weekly-summary-label">{html.escape(label)}</span>'
+        f'<strong class="weekly-summary-value">{html.escape(value)}</strong>'
+        f'<span class="weekly-summary-detail">{html.escape(detail)}</span>'
+        "</div>"
+        for label, value, detail in metrics
+    )
+    context = html.escape(f"{league_label} {season} · Semana {week}")
+    st.markdown(
+        '<style>'
+        '[data-testid="stMainBlockContainer"] { padding-bottom: 175px !important; }'
+        '@media (max-width: 560px) { '
+        '[data-testid="stMainBlockContainer"] { padding-bottom: 245px !important; }'
+        '}'
+        '</style>'
+        '<footer class="weekly-summary-footer" aria-label="Resumen de la semana">'
+        '<div class="weekly-summary-heading">'
+        f'<span>📊 Resumen de la semana · {context}</span>'
+        '<span class="weekly-summary-legend">'
+        'ML: ganador · Spread: cobertura del modelo · O/U: total vs. línea de mercado'
+        '</span></div>'
+        f'<div class="weekly-summary-grid">{metric_html}</div>'
+        '</footer>',
+        unsafe_allow_html=True,
+    )
 
 
 def _probability_fraction(value):
@@ -2488,45 +2619,6 @@ if week is not None and not picks_df.empty:
             records_fallback = _get_records_for(season, week, league_choice)
 
 
-# ---------- Métricas de cabecera ----------
-if week is not None and not picks_full_df.empty:
-    with st.expander("📊 Resumen de la semana", expanded=False):
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        with c1:
-            st.metric("Partidos mostrados", len(picks_df))
-        with c2:
-            st.metric("Señales en spread", count_value_signals(picks_df, "valor_spread"))
-        with c3:
-            st.metric("Señales en O/U", count_value_signals(picks_df, "valor_total"))
-        with c4:
-            acc = _accuracy_metric(picks_full_df, "acierto_ganador")
-            if acc is None:
-                st.metric("Aciertos ML", "—")
-            else:
-                a, t, p = acc
-                st.metric("Aciertos ML", f"{a}/{t}", delta=f"{p}%")
-        with c5:
-            acc = _accuracy_metric(picks_full_df, "acierto_spread")
-            if acc is None:
-                st.metric("Aciertos spread", "—")
-            else:
-                a, t, p = acc
-                st.metric("Aciertos spread", f"{a}/{t}", delta=f"{p}%")
-        with c6:
-            acc = _accuracy_metric(picks_full_df, "acierto_total")
-            if acc is None:
-                st.metric("Aciertos O/U", "—")
-            else:
-                a, t, p = acc
-                st.metric("Aciertos O/U", f"{a}/{t}", delta=f"{p}%")
-
-        st.caption(
-            "**ML** = acertó quién gana. "
-            "**Spread** = el resultado cubrió el spread que dio el modelo. "
-            "**O/U** = el total real cayó del lado que el modelo eligió respecto a la línea del mercado."
-        )
-
-
 # --- TAB: Partidos ---
 with tab_picks:
     if week is None:
@@ -3013,3 +3105,7 @@ st.caption(
     "Los datos se leen de MongoDB. También puedes generar semanas desde la terminal con "
     "`python rebuild_weeks.py --season <AÑO> --league <nfl|ncaaf> --from-week <X> --to-week <Y> --skip-odds`."
 )
+if week is not None and not picks_full_df.empty:
+    _render_week_summary_footer(
+        picks_df, picks_full_df, league_label, season, week
+    )
