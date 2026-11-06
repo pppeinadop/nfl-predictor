@@ -2490,7 +2490,7 @@ if week is not None and not picks_df.empty:
 
 # ---------- Métricas de cabecera ----------
 if week is not None and not picks_full_df.empty:
-    with st.expander("📊 Resumen de la semana", expanded=False):
+    with st.expander("📊 Resumen de la semana", expanded=True):
         c1, c2, c3, c4, c5, c6 = st.columns(6)
         with c1:
             st.metric("Partidos mostrados", len(picks_df))
