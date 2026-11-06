@@ -624,18 +624,18 @@ st.markdown("""
     border-color: #658071;
   }
   div[class*="st-key-game-recalc-"] div.stButton > button {
-    width: 2rem;
-    min-width: 2rem;
-    min-height: 2rem;
-    height: 2rem;
+    width: 1.45rem;
+    min-width: 1.45rem;
+    min-height: 1.45rem;
+    height: 1.45rem;
     padding: 0;
-    color: #74d6a8;
-    background: #172a2b;
-    border: 1px solid #315848;
+    color: #5b9e7e;
+    background: #14221f;
+    border: 1px solid #273c33;
     border-radius: 50%;
-    font-size: 1.25rem;
-    font-weight: 600;
-    opacity: 0.9;
+    font-size: 0.95rem;
+    font-weight: 500;
+    opacity: 0.68;
     box-shadow: none;
     transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   }
@@ -646,6 +646,8 @@ st.markdown("""
     opacity: 1;
   }
   div[class*="st-key-game-recalc-"] div.stButton > button:focus-visible {
+    color: #a6f0ca;
+    opacity: 1;
     outline: 2px solid #74d6a8;
     outline-offset: 2px;
   }
@@ -657,7 +659,7 @@ st.markdown("""
     z-index: 2;
     right: calc(50% + 1.15rem);
     bottom: 0.55rem;
-    width: 2rem;
+    width: 1.45rem;
   }
   div.stButton > button[kind="primary"] {
     color: #07130e;
